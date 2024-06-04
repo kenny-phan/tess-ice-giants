@@ -32,7 +32,7 @@ from scipy.interpolate import Rbf
 #DO YOU WANT TO FLAT FIELD AND BIAS SUBTRACT?
 biassub = 0 # yes = 1 no = 0 to bias subtract
 flatdiv = 0 # yes = 1 no = 0 to flat field
-align = 1# yes = 1 no = 0 to align based on coordinates
+align = 1 # yes = 1 no = 0 to align based on coordinates
 
 #useful directories
 rawdir = '.../cal/' #directory with the raw images
