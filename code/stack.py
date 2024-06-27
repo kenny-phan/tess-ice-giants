@@ -36,11 +36,12 @@ for i in tqdm(range(0, nfiles, btchsze)):
         f = fitdir + file
         with fits.open(f) as opnfits:
             flx = opnfits[0].data
-            time = opnfits[0].header['DATE-OBS']
             imgs.append(flx)
+            start = opnfits[0].header['TSTART']
+            stop = opnfits[0].header['TSTOP']
+            time = (start + stop)/2
             times.append(time)
-            del flx
-            del time
+            del flx, start, stop
     stk = np.stack(imgs, axis=2)
     imgs = []
     np.save(stkdir+'count%03d.npy'%(btchno), stk)

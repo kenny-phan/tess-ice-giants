@@ -25,8 +25,8 @@ def subtract_background(data_stack, size_cutout_side, percent_pix_scatteredlight
 
     return data_stack_tiled_sub
 
-stkfil = '/scratch11/ktp9/DIA/70/stacks/dirty.npy'
-optfil = '/scratch11/ktp9/DIA/70/stacks/malenasubtract.npy'
+stkfil = '/scratch11/ktp9/DIA/70/stacks/raw.npy'
+optfil = '/scratch11/ktp9/DIA/70/stacks/mcleaned.npy'
 raw = np.load(stkfil)
 axs = 150
 array = subtract_background(raw, axs)
