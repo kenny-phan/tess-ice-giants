@@ -11,6 +11,7 @@ from matplotlib.pyplot import get_cmap
 #for object lightcurve
 from astropy.stats import sigma_clipped_stats
 from photutils.detection import DAOStarFinder
+from photutils.aperture import CircularAperture, aperture_photometry
 
 from tqdm import tqdm
 
@@ -44,10 +45,10 @@ def linelc(arr, x, y, lcdir):
     #print(f"Plot saved as {output}")
 
 #diagnistic: takes random pixels and charts lightcurves for each on the same plot
-def scatterlc(arr, lcdir):
+def scatterlc(arr, x_pixel_range, y_pixel_range, lcdir):
     
     pltnum = 200 #number of lightcurves on the graph
-    random_coordinates = [(random.randint(125, 149), random.randint(0, 149)) for _ in range(pltnum)]
+    random_coordinates = [(random.randint(x_pixel_range), random.randint(y_pixel_range)) for _ in range(pltnum)]
 
     # Generate the z indices
     z_indices = np.arange(arr.shape[2])
@@ -65,7 +66,7 @@ def scatterlc(arr, lcdir):
     
     plt.xlabel('Cadence Number')
     plt.ylabel('Flux')
-    plt.ylim(-250, 10000)
+    #plt.ylim(-250, 10000)
     #plt.xlim(2000, 4000)
     plt.title(f'Cadence vs. Malena Subtraction over {pltnum} pixels')
     plt.grid(True)
@@ -77,17 +78,14 @@ def scatterlc(arr, lcdir):
     plt.close() 
 
 #pull out moving object position
-def extract_positions(data_fits, position_last_x, position_last_y):
-
-    with fits.open(data_fits) as hdu:
-    data_stack = hdu[2].data
-    times = hdu[3].data
+def extract_positions(data_stack, times, position_last_x, position_last_y):
     
     positions_all = np.array([0,0])
     times_all = np.array([])
-    frames_mask = np.ones(len(data_stack[0,0]))
+    #frames_mask = np.ones(len(data_stack[0,0]))
+    nan_positions = np.array([np.nan, np.nan])
 
-    for data_frame_num in range(0, len(data_stack[0,0])):
+    for data_frame_num in tqdm(range(0, len(data_stack[0,0]))):
         data_frame = data_stack[:,:,data_frame_num]
         mean, median, std = sigma_clipped_stats(data_frame, sigma=3.0)
         threshold = np.percentile(data_frame, 99.99)
@@ -102,7 +100,7 @@ def extract_positions(data_fits, position_last_x, position_last_y):
             #xdist_last = abs(sources['xcentroid'].value - position_last_x)
             
             where_source = np.argmin(dist_last)
-            print(f"Closest source distance: {dist_last[where_source]}")
+            #print(f"Closest source distance: {dist_last[where_source]}")
 
             if dist_last[where_source] < 50:
    
@@ -115,16 +113,22 @@ def extract_positions(data_fits, position_last_x, position_last_y):
                     #print(f"Appended position: {positions}, time: {times[data_frame_num]}")
        
                 else:
-                    frames_mask[data_frame_num] = 0
-                    print("Position appended with NaNs. Source x-coordinate difference too large.")
+                    #frames_mask[data_frame_num] = 0
+                    positions_all = np.vstack((positions_all, nan_positions))
+                    times_all = np.append(times_all, times[data_frame_num])
+                    print(f"Index {data_frame_num} appended with NaNs. Source x-coordinate difference too large.")
 
             else:
-                frames_mask[data_frame_num] = 0
-                print("Position appended with NaNs. Source distance too large.")
+                #frames_mask[data_frame_num] = 0
+                positions_all = np.vstack((positions_all, nan_positions))
+                times_all = np.append(times_all, times[data_frame_num])
+                print(f"Index {data_frame_num} appended with NaNs. Source distance too large.")
 
         except:
-            frames_mask[data_frame_num] = 0
-            print("Position appended with NaNs. Exception occurred.")
+            #frames_mask[data_frame_num] = 0
+            positions_all = np.vstack((positions_all, nan_positions))
+            times_all = np.append(times_all, times[data_frame_num])
+            print(f"Index {data_frame_num} appended with NaNs. Exception occurred.")
     
     #write flags to fits file
     # flag_hdu = fits.ImageHDU(data=frames_mask, name='good_frame_flag')
@@ -135,52 +139,73 @@ def extract_positions(data_fits, position_last_x, position_last_y):
     return positions_all, times_all
 
 # make lightcurve array
-def get_summed_fluxes(data_fits, positions_all, r_aperture):
+def get_summed_fluxes(data_stack, positions_all, r_aperture):
 
-    with fits.open(data_fits) as hdu:
-        data_stack = hdu[2].data
-        times = hdu[3].data
-        #good_frame_flag = hdu[-1].data
-        
-    reduced_image_stack_pos = 
-    
     summed_fluxes_all = np.array([])
 
-    for frame_num in range(0, len(reduced_image_stack_pos[0,0])):
-
-        data_frame = reduced_image_stack_pos[:,:,frame_num]
-
-        aperture = CircularAperture(positions_all[frame_num], r=r_aperture)#5)#1.5)
-        phot_table = aperture_photometry(data_frame, aperture)
-        summed_flux = phot_table['aperture_sum'].value[0]
-        #print(positions_all[frame_num], summed_flux)
-        summed_fluxes_all = np.append(summed_fluxes_all, summed_flux)
+    for frame_num in tqdm(range(0, len(data_stack[0,0]))):
         
+        if np.any(np.isnan(positions_all[frame_num])):
+            summed_fluxes_all = np.append(summed_fluxes_all, np.nan)
+
+        else:
+            data_frame = data_stack[:,:,frame_num]
+    
+            aperture = CircularAperture(positions_all[frame_num], r=r_aperture)#5)#1.5)
+            phot_table = aperture_photometry(data_frame, aperture)
+            summed_flux = phot_table['aperture_sum'].value[0]
+            #print(positions_all[frame_num], summed_flux)
+            summed_fluxes_all = np.append(summed_fluxes_all, summed_flux)
+            
     return summed_fluxes_all
 
-# #plot to png
-# def makelc(data, aperture_range):
-    
-#     for i in aperture_range:
-#         get_summed_fluxes(data, )
-
+#UPDATE directories
 lcdir = '/scratch11/ktp9/DIA/70/lcfiles/' #directory to save the lightcurve plots
-fitdir = '/scratch11/ktp9/DIA/70/stacks/'
+fitdir = '/scratch11/ktp9/DIA/42/stacks/'
 
 #example calls
 #scatterlc(array, lcdir)
 #for x, y in tqdm(random_coordinates):
     #linelc(array, x, y, lcdir)
 
-data_fits = fitdir + 'sector70.fits'
+# ---Make LC for planet---
+#UPDATE filename
+"""
+data_fits = fitdir + 'sector42.fits'
 
-startx = 135
-starty = 15
-positions_all, times_all = extract_positions(data_fits, startx, starty)
+with fits.open(data_fits) as hdu:
+    raw_data = hdu[1].data
+    data_stack = hdu[2].data
+    times = hdu[3].data
+"""
+"""
+startx = 138 #42: 127 #UPDATE
+starty = 9 #42: 187 #UPDATE
+
+data_stack = np.load('/scratch11/ktp9/DIA/70/sec70chunk30.npy')
+times = np.load('/scratch11/ktp9/DIA/70/stacks/time.npy')
+
+positions_all, times_all = extract_positions(data_stack, times, startx, starty)
+
+positions_x_offset = positions_all.copy()
+positions_x_offset = positions_x_offset[0] - 20
+
+positions_y_offset = positions_all.copy()
+positions_y_offset = positions_y_offset[1] - 20
+
 print(f"Shape of positions: {positions_all.shape}")
 print(f"Shape of times: {times_all.shape}")
+#check for useable data count
+mask = ~np.isnan(positions_all)
+data_count = np.sum(mask, axis=0)
+print(f"Data count: {data_count}")
 
-# r_aperture = 6
-# summed_fluxes_all = get_summed_fluxes(reduced_image_stack-pos, positions_all, )
+summed_x_offset = get_summed_fluxes(data_stack, positions_x_offset)
+summed_y_offset = (data_stack, positions_y_offset)
 
-print("Here's your plot! Toodle-loo, kagnaroo!")
+# for r in tqdm(range(4, 9)): #CONSIDER updating for your radius
+#     summed_fluxes_all = get_summed_fluxes(data_stack, positions_all, r)
+#     np.save(lcdir + "chunk30" + str(r) , summed_fluxes_all)
+    
+print("Here's your flux data! Toodle-loo, kagnaroo!")
+"""

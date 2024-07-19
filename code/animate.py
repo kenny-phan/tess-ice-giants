@@ -11,7 +11,7 @@ from os import listdir
 
 from tqdm import tqdm
 
-def make_animation_1panel(data_stack, times, save_dir='./'):
+def make_animation_1panel(data_stack, times, aniname, save_dir='./', step=10):
 
     if os.path.isdir(save_dir) == False:
         os.mkdir(save_dir)
@@ -37,7 +37,6 @@ def make_animation_1panel(data_stack, times, save_dir='./'):
     plt.tight_layout()
 
     # iteratively adjust figure
-    step = 10
     for n in tqdm(range(0, len(data_stack[0,0]))):
 
         if n%step == 0:
@@ -57,23 +56,30 @@ def make_animation_1panel(data_stack, times, save_dir='./'):
     print("Writing images to video...")
     filenames_ordered = natsort.natsorted(glob.glob(save_dir+"*.png"))
     ims = [imageio.imread(f) for f in filenames_ordered]
-    imageio.mimwrite(os.path.join(save_dir, 'dirty.mp4'), ims, fps=100)
+    imageio.mimwrite(os.path.join(save_dir, aniname), ims, fps=100)
 
     #remove leftover pngs
-    delete = [f for f in glob.glob('*.png') if isfile(join(save_dir, f))]
+    delete = [f for f in glob.glob(os.path.join(save_dir, '*.png')) if os.path.isfile(os.path.join(save_dir, f))]
     for file in delete:
         os.remove(file)
 
-fitdir = '/scratch11/ktp9/DIA/70/stacks/'
-meddir = '/scratch11/ktp9/DIA/70/media/'
-
-fits_filename = fitdir + 'sector70.fits'
+fitdir = '/scratch11/ktp9/DIA/42/archive/'
+meddir = '/scratch11/ktp9/DIA/42/media/'
+"""
+fits_filename = fitdir + 'DIA70.fits'
 with fits.open(fits_filename) as hdu:
     data_stack_bkgsub = hdu[1].data
-    times = hdu[3].data
+    times = hdu[2].data
     sortind = np.argsort(times)
     data_stack_bkgsub = data_stack_bkgsub[:,:,sortind]
     times = times[sortind]
+"""
+data_stack_bkgsub = np.load('/scratch11/ktp9/DIA/42/sec42chunk16.npy')
+times = np.load('/scratch11/ktp9/DIA/42/stacks/time.npy')
+sortind = np.argsort(times)
+data_stack_bkgsub = data_stack_bkgsub[:,:,sortind]
+times = times[sortind]
+aniname = '16chunk_42.mp4'
 
-make_animation_1panel(data_stack_bkgsub, times, save_dir=meddir)
+make_animation_1panel(data_stack_bkgsub, times, aniname, save_dir=meddir, step=3)
 print("Animation made! Bye-bye buttrefly!")

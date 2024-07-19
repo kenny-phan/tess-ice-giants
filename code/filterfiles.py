@@ -12,4 +12,4 @@ with open(input_file, 'r') as f_in, open(output_file, 'w') as f_out:
             f_out.write(line)
 
 print(f"Filtered lines containing {keyword} to {output_file}")
-
+print("All done! See you soon, babooon!")

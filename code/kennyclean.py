@@ -1,3 +1,4 @@
+# based on Rice 2024
 import numpy as np
 
 def subtract_background(data_stack, size_cutout_side, percent_pix_scatteredlight=5):
@@ -33,11 +34,34 @@ def subtract_background(data_stack, size_cutout_side, percent_pix_scatteredlight
 
     return data_stack_tiled_sub
 
+# Function to process the array in chunks
+def chunk(arr, chunk_size, percent_pix_scatteredlight=5):
+    D0, D1, D2 = arr.shape
+    output_array = np.zeros_like(arr)
+    
+    for i in range(0, D0, chunk_size):
+        for j in range(0, D1, chunk_size):
+            # Define the chunk boundaries
+            chunk_d0_end = min(i + chunk_size, D0)
+            chunk_d1_end = min(j + chunk_size, D1)
+            
+            # Extract the chunk
+            chunk = arr[i:chunk_d0_end, j:chunk_d1_end, :]
+            
+            # Process the chunk
+            subtracted_chunk = subtract_background(chunk, chunk_size)
+            
+            # Put the processed chunk back into the output array
+            output_array[i:chunk_d0_end, j:chunk_d1_end, :] = subtracted_chunk
+    
+    return output_array
+
 #UPDATE directories
-stkfil = '/scratch11/ktp9/DIA/42/stacks/raw.npy'
-optfil = '/scratch11/ktp9/DIA/42/discovery42.npy'
+stkfil = '/scratch11/ktp9/DIA/70/stacks/raw.npy'
+optfil = '/scratch11/ktp9/DIA/70/sec70chunk30.npy'
 raw = np.load(stkfil)
-axs = 256 #UPDATE with axis size in pixles
-array = subtract_background(raw, axs)
+#axs = 256 #UPDATE with axis size in pixles
+chunk_size = 30 #how big do you want the sample boxes?
+array = chunk(raw, chunk_size)
 np.save(optfil, array)
 print("All done! Hit the road, happy taod!")

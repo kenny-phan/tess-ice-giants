@@ -12,8 +12,8 @@ from os.path import isfile, join
 from tqdm import tqdm
 
 # directories with full ffis & directory to put cutouts
-ffidir = '/scratch11/ktp9/DIA/70/ffis70/'
-cutdir = '/scratch11/ktp9/DIA/70/cutouts/'
+ffidir = '/scratch11/ktp9/DIA/42/ffis42/'
+cutdir = '/scratch11/ktp9/DIA/42/cutouts/'
 cdedir = '/home/ktp9/TESSNeptune24/code/'
 
 def makeCutout(fits_file, position, cutout_size, output_file, hdu_num):
@@ -49,10 +49,11 @@ nfiles = len(files)
 os.chdir(cdedir) #changes back to the code directory
 
 #variables, change as needed
-ra = 356.567526
-dec = -3.278378
-position = (1979.058, 1092.890)
-cutout_size = (150, 150)
+#ra, dec deprecated in favor of pixel vals as found in TESS Playground
+#ra = 356.567526
+#dec = -3.278378
+position = (309.907, 264.214)#sector 70: (1979.058, 1092.890)
+cutout_size = (256, 256)
 hdu_num = 1 #can be 0, 1, depending on where the fits is from
 
 for ii in tqdm(range(0, nfiles)):
@@ -70,5 +71,5 @@ for ii in tqdm(range(0, nfiles)):
         fn = time.time()
         print('Cutout for '+files[ii]+' finished in '+str(fn-st)+'seconds.')
 
-print('All done! After a while, crocodiel!')
+print('All done! See you later, alliagator!')
 
