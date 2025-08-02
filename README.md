@@ -1,4 +1,3 @@
-# TESSNeptune24
-Codebase for the Yale First-Year Summer Research Fellowship, analyzing the lightcurve of Neptune in TESS data.
+# Light Curve Analysis of Ice Giants with TESS
 
 This pipline is designed to resolve and analyze lightcurves of Solar System planets imaged by TESS. 
