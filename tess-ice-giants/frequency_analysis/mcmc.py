@@ -90,7 +90,7 @@ def fit_gaussian(phi_deg_array, bimode=True, plot=False):
     return latitudes, standard_devs
 
 # get latitude solutions for input peak frequency array, wind speed equation, and frequency eqn
-def runanalysis(f, eqn, freq_eqn):
+def runanalysis(f, eqn, freq_eqn, plot=True):
     
     all_lats = []
     all_stdevs = []
@@ -109,12 +109,12 @@ def runanalysis(f, eqn, freq_eqn):
     
         phi_deg_array.append(phi_deg)
     
-    latitudes, standard_devs = fit_gaussian(phi_deg_array, bimode=True, plot=True)
+    latitudes, standard_devs = fit_gaussian(phi_deg_array, bimode=True, plot=plot)
     
     all_lats.append(latitudes)
     all_stdevs.append(standard_devs)
 
-    return all_lats, all_stdevs
+    return np.array(all_lats), np.array(all_stdevs)
 
 
 # functions to determine the lower frequency bound of latitude solutions
