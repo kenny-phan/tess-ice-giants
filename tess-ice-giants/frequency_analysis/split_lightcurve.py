@@ -1,4 +1,5 @@
 import numpy as np
+from astropy.timeseries import LombScargle
 
 def split(x, m=5):
     """Get indices of light curve cut off points"""
@@ -92,3 +93,17 @@ def split_lightcurve(time, flux):
     time_stack, flux_stack = stack_segments(time_half, flux_half, half_ratio)
 
     return time_stack, flux_stack
+
+def split_periodogram(time_stack, flux_stack, min_freq, max_freq):
+
+    power_stack = []
+
+    for i in range(len(time_stack)):
+        frequency = np.linspace(min_freq, max_freq, 100)
+        power = LombScargle(time_stack[i], flux_stack[i]).power(frequency)
+
+        power_stack.append(power)
+
+    power_stack = np.array(power_stack)
+
+    return frequency, power_stack
