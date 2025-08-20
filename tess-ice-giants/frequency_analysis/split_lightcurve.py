@@ -1,7 +1,9 @@
 import numpy as np
 from astropy.timeseries import LombScargle
 
-def split(x, m=5):
+from frequency_analysis.orbit_correction import run_orbit_correction
+
+def split(x, m=100):
     """Get indices of light curve cut off points"""
 
     valid_x = x[~np.isnan(x)]
@@ -52,16 +54,14 @@ def weight_segments(time, segment_indices, flux_segments, keep_indices):
 
     return time_half, flux_half, half_ratio
 
-def stack_segments(time_half, flux_half, half_ratio):
+def stack_segments(time_half, flux_half, half_ratio, total_segs=10):
+
+    """some data loss up to n pixels"""
 
     time_stack, flux_stack = [], []
 
     for i, segment in enumerate(flux_half):
-        if i == 0: 
-            n = int(np.round(half_ratio[i] * 10))
-
-        else: 
-            n = int(np.round(half_ratio[i] * 10))
+        n = int(np.round(half_ratio[i] * total_segs))
 
         index_length = len(segment[~np.isnan(segment)]) // n
         mask_nans = ~np.isnan(segment)
@@ -83,16 +83,17 @@ def stack_segments(time_half, flux_half, half_ratio):
 
     return time_stack, flux_stack
 
-def split_lightcurve(time, flux):
+def split_lightcurve(time, flux, total_segs=10):
     segment_indices = split(time)
 
     flux_segments, keep_indices = get_flux_segments(flux, segment_indices)
 
     time_half, flux_half, half_ratio = weight_segments(time, segment_indices, flux_segments, keep_indices)
 
-    time_stack, flux_stack = stack_segments(time_half, flux_half, half_ratio)
+    time_stack, flux_stack = stack_segments(time_half, flux_half, half_ratio, total_segs)
 
     return time_stack, flux_stack
+
 
 def split_periodogram(time_stack, flux_stack, min_freq, max_freq):
 
@@ -107,3 +108,21 @@ def split_periodogram(time_stack, flux_stack, min_freq, max_freq):
     power_stack = np.array(power_stack)
 
     return frequency, power_stack
+
+
+def split_data(file_list, target_id, observer_id, min_freq, max_freq, total_segs=10):
+
+    all_times, all_flux, all_power = [], [], []
+
+    for data_file in file_list: 
+
+        time, _, corrected_lightcurve = run_orbit_correction(target_id, observer_id, data_file)
+
+        time_stack, flux_stack = split_lightcurve(time, corrected_lightcurve, total_segs)
+        frequency, power_stack = split_periodogram(time_stack, flux_stack, min_freq, max_freq)
+
+        all_times.append(time_stack)
+        all_flux.append(flux_stack)
+        all_power.append(power_stack)
+
+    return all_times, all_flux, frequency, all_power
