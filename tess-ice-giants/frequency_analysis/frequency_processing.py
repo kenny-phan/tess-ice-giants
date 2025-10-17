@@ -3,7 +3,9 @@ import numpy.polynomial.polynomial as poly
 from astropy.timeseries import LombScargle
 from scipy.signal import find_peaks
 
-def make_periodogram(time, flux, minimum_frequency=0.05, maximum_frequency=3, samples_per_peak=10, probabilities=[10, 1, 0.01], n_bootstrap=1000):
+from frequency_analysis.orbit_correction import run_orbit_correction
+
+def make_periodogram(time, flux, minimum_frequency=1, maximum_frequency=3, samples_per_peak=10, probabilities=[10, 1, 0.01], n_bootstrap=1000):
     ls = LombScargle(time, flux)
 
     frequency, power = ls.autopower(minimum_frequency=minimum_frequency, maximum_frequency=maximum_frequency, samples_per_peak=samples_per_peak) 
@@ -23,13 +25,19 @@ def make_periodogram(time, flux, minimum_frequency=0.05, maximum_frequency=3, sa
 
 def get_peak_frequencies(frequency, power, false_alarm_array):
     peaks, _ = find_peaks(power, height=false_alarm_array)
-    return frequency[peaks]
+    return frequency[peaks], power[peaks]
 
 def linear_detrend(time, flux):
 
     linear_fit = poly.polyfit(time, flux, 1)
     line = poly.polyval(time, linear_fit)
 
-    detrended = flux - line + np.mean(flux)
+    detrended = flux - line + np.nanmean(flux)
 
     return linear_fit, line, detrended
+
+def detrend_all(target_id, observer_id, data_file):
+    time, _, orbit_corrected = run_orbit_correction(target_id, observer_id, data_file)
+    linear_fit, line, detrended = linear_detrend(time, orbit_corrected)
+
+    return time, orbit_corrected, linear_fit, line, detrended

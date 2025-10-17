@@ -5,7 +5,7 @@ import emcee
 
 from sklearn.mixture import GaussianMixture
 from scipy.stats import norm
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize_scalar, root_scalar
 
 # Log-likelihood function
 def log_likelihood(phi, f_obs, sigma, model_eqn, freq_eqn):
@@ -15,7 +15,7 @@ def log_likelihood(phi, f_obs, sigma, model_eqn, freq_eqn):
 
 # Log-prior (uniform in latitude range)
 def log_prior(phi):
-    if -np.pi/2 < phi < np.pi/2:  # latitude in radians
+    if 0 < phi < np.pi/2:  # latitude in radians
         return 0.0
     return -np.inf
 
@@ -30,16 +30,17 @@ def log_probability(phi, f_obs, sigma, model_eqn, freq_eqn):
 def run_mcmc(f_obs, model_eqn, freq_eqn, sigma=10.0, n_walkers=32, n_steps=5000):
     ndim = 1
     # Initialize walkers around 0 (equator)
-    initial_pos = np.random.uniform(-np.pi/2 + 0.1, np.pi/2 - 0.1, size=(n_walkers, ndim))
+    initial_pos = np.random.uniform(0.1, np.pi/2 - 0.1, size=(n_walkers, ndim))
 
     sampler = emcee.EnsembleSampler(n_walkers, ndim, log_probability, args=(f_obs, sigma, model_eqn, freq_eqn))
-
+    
     sampler.run_mcmc(initial_pos, n_steps, progress=True)
 
     return sampler
 
 # fit a gaussian to the mcmc posteriors
-def fit_gaussian(phi_deg_array, bimode=True, plot=False):
+def fit_gaussian(phi_deg_array, n_components=None, plot=False):
+    
     latitudes = []
     standard_devs = []
 
@@ -47,8 +48,8 @@ def fit_gaussian(phi_deg_array, bimode=True, plot=False):
         bell = np.abs(phi_deg)
         data_reshaped = bell.reshape(-1, 1)
 
-        if bimode:
-            gmm = GaussianMixture(n_components=2, random_state=42)
+        if n_components is not None:
+            gmm = GaussianMixture(n_components=n_components, random_state=42)
             gmm.fit(data_reshaped)
             means = gmm.means_.flatten()
             stds = np.sqrt(gmm.covariances_).flatten()
@@ -79,7 +80,8 @@ def fit_gaussian(phi_deg_array, bimode=True, plot=False):
             # Histogram
             plt.hist(bell, bins=50, density=True, alpha=0.5, label="Data")
             plt.legend()
-            plt.title(f"{'Bimodal' if bimode else 'Unimodal'} Gaussian Fit")
+            distribution_type = ["Unimodal", "Bimodal", "Trimodal"]
+            plt.title(f"{distribution_type[n_components - 1]} Gaussian Fit")
             plt.xlabel("Value")
             plt.ylabel("Density")
             plt.show()
@@ -90,7 +92,7 @@ def fit_gaussian(phi_deg_array, bimode=True, plot=False):
     return latitudes, standard_devs
 
 # get latitude solutions for input peak frequency array, wind speed equation, and frequency eqn
-def runanalysis(f, eqn, freq_eqn, plot=True):
+def runanalysis(f, eqn, freq_eqn, n_components=2, plot=True):
     
     all_lats = []
     all_stdevs = []
@@ -109,7 +111,7 @@ def runanalysis(f, eqn, freq_eqn, plot=True):
     
         phi_deg_array.append(phi_deg)
     
-    latitudes, standard_devs = fit_gaussian(phi_deg_array, bimode=True, plot=plot)
+    latitudes, standard_devs = fit_gaussian(phi_deg_array, n_components=n_components, plot=plot)
     
     all_lats.append(latitudes)
     all_stdevs.append(standard_devs)
@@ -147,3 +149,49 @@ def find_minimum_frequency(wind_eqn, freq_eqn, bounds=(0.01, 2)):
         print("No intersection found in the given f range.")
 
     return result.x
+
+def group_and_average(arr1, arr2):
+    """
+    Groups elements of arr1 so that the number of groups matches the size of arr2.
+    Returns an array of the averages of each group.
+    """
+    arr1 = np.asarray(arr1)
+    arr2 = np.asarray(arr2)
+    
+    len1 = len(arr1)
+    len2 = len(arr2)
+
+    if len2 == 0:
+        raise ValueError("arr2 must have non-zero length.")
+    if len1 < len2:
+        raise ValueError("arr1 must be at least as long as arr2.")
+    
+    # Compute group size (may not be perfect division)
+    group_size = len1 / len2
+
+    result = []
+    for i in range(len2):
+        start = int(round(i * group_size))
+        end = int(round((i + 1) * group_size))
+        group = arr1[start:end]
+        avg = np.mean(group) if len(group) > 0 else 0
+        result.append(avg)
+
+    print(f"{len(arr1) - len(result)*group_size} data points discarded")
+    return np.array(result)
+
+def solve_intersection_at_phi(wind_eqn, freq_eqn, bounds=(0.01, 2), phi=0.0):
+    """
+    Solve for f such that wind_eqn(0) = freq_eqn(f, 0).
+    """
+    target = wind_eqn(phi)  # fixed value at phi=0
+
+    def func(f):
+        return freq_eqn(f, phi) - target
+
+    result = root_scalar(func, bracket=bounds, method='brentq')
+    if result.converged:
+        print(f"Intersection at phi=0: f = {result.root:.6f}")
+        return result.root
+    else:
+        raise RuntimeError("No intersection found in the given bounds")
