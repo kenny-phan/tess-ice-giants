@@ -41,3 +41,4 @@ def detrend_all(target_id, observer_id, data_file):
     linear_fit, line, detrended = linear_detrend(time, orbit_corrected)
 
     return time, orbit_corrected, linear_fit, line, detrended
+

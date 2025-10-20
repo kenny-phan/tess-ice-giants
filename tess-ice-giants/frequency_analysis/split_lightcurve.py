@@ -161,7 +161,7 @@ def split_lightcurve(time, flux, m, total_segs=10, by_time=True):
 
     return time_stack, flux_stack
 
-def split_periodogram(time_stack, flux_stack, min_freq, max_freq):
+def split_periodogram(time_stack, flux_stack, min_freq, max_freq, bootstrap=False, n_bootstrap=1000, fap_level=0.01):
 
     power_stack, fap_stack = [], []
 
@@ -169,7 +169,11 @@ def split_periodogram(time_stack, flux_stack, min_freq, max_freq):
         frequency = np.linspace(min_freq, max_freq, 100)
         _, _, detrended = linear_detrend(time_stack[i], flux_stack[i])
         power = LombScargle(time_stack[i], detrended).power(frequency)
-        fap = LombScargle(time_stack[i], detrended).false_alarm_level(0.0001)
+
+        if bootstrap:
+            fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level, method='bootstrap', method_kwds=dict(n_bootstraps=n_bootstrap))
+        else: 
+            fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level)
         power_stack.append(power)
         fap_stack.append(fap)
 
@@ -178,14 +182,14 @@ def split_periodogram(time_stack, flux_stack, min_freq, max_freq):
 
     return frequency, power_stack, fap_stack
 
-def split_data(times_list, flux_list, min_freq, max_freq, m=50, total_segs=10, by_time=True):
+def split_data(times_list, flux_list, min_freq, max_freq, m=50, total_segs=10, by_time=True, bootstrap=False):
 
     all_times, all_flux, all_power, all_fap = [], [], [], []
 
     for i in range(len(times_list)): 
 
         time_stack, flux_stack = split_lightcurve(times_list[i], flux_list[i], m, total_segs, by_time=by_time)
-        frequency, power_stack, fap_stack = split_periodogram(time_stack, flux_stack, min_freq, max_freq)
+        frequency, power_stack, fap_stack = split_periodogram(time_stack, flux_stack, min_freq, max_freq, bootstrap=bootstrap)
 
         all_times.append(time_stack)
         all_flux.append(flux_stack)

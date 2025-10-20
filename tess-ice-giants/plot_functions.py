@@ -9,6 +9,7 @@ import seaborn as sns
 from astropy.io import fits
 
 from frequency_analysis.wind_equations import *
+from frequency_analysis.utility_functions import chi2
 
 # ~~~ LATITUDE SOLUTIONS ~~~
 
@@ -167,4 +168,23 @@ def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors, ibm, title
     histax.legend()
 
     plt.show()
+
+def plot_phase_folded_lc(time, correction, peak_freqs, ls):
+    for i in range(len(peak_freqs)):
+        best_frequency = peak_freqs[i]
+        t0 = time[0]  # reference epoch n42['times'], n42['corrections']
+
+        phase = np.mod((time - t0) * best_frequency, 1)
+        sort_idx = np.argsort(phase)
+
+        model_flux = ls.model(time, best_frequency)
+
+        print("Chi-squared of model fit:", chi2(correction, model_flux))
+        plt.plot(phase[sort_idx], correction[sort_idx], 'k.', markersize=1, label='Data')
+        plt.plot(phase[sort_idx], model_flux[sort_idx], 'r-', label='LS Model Fit')
+        plt.xlabel('Phase')
+        plt.ylabel('Flux')
+        plt.title(f'Light Curve Phase-Folded at {1/best_frequency:.5f} days')
+        plt.legend()
+        plt.show()
 

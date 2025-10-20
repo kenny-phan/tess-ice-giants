@@ -150,7 +150,7 @@ def find_minimum_frequency(wind_eqn, freq_eqn, bounds=(0.01, 2)):
 
     return result.x
 
-def group_and_average(arr1, arr2):
+def group_and_average(arr1, arr2, mean=True):
     """
     Groups elements of arr1 so that the number of groups matches the size of arr2.
     Returns an array of the averages of each group.
@@ -174,7 +174,10 @@ def group_and_average(arr1, arr2):
         start = int(round(i * group_size))
         end = int(round((i + 1) * group_size))
         group = arr1[start:end]
-        avg = np.mean(group) if len(group) > 0 else 0
+        if mean:
+            avg = np.mean(group) if len(group) > 0 else 0
+        else: 
+            avg = np.median(group) if len(group) > 0 else 0
         result.append(avg)
 
     print(f"{len(arr1) - len(result)*group_size} data points discarded")
