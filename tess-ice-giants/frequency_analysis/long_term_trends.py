@@ -9,6 +9,12 @@ from tqdm import tqdm
 from frequency_analysis.frequency_processing import get_peak_frequencies
 from frequency_analysis.mcmc import fit_gaussian
 
+def z_score(data):
+    return (data - np.nanmedian(data)) / np.nanstd(data)
+
+def chi2(O, E):
+    return np.nansum((O - E)**2 / E)
+
 def bootstrap_peak_periods(time, flux, fap_level=0.01, n_bootstraps=1000, boot_percent=0.7, 
                            min_period=5, max_period=20, n_freqs=1000, plot=False, n_plot=100): 
     """Bootstrap the peak periods from the Lomb-Scargle periodogram of the lightcurve.""" 
@@ -115,8 +121,35 @@ def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_co
 
     return labels, all_means, all_stds
 
-def z_score(data):
-    return (data - np.nanmedian(data)) / np.nanstd(data)
+def get_models(time, flux, peak_freqs):
+        ls = LombScargle(time, flux)
+        models = []
+        for i in range(len(peak_freqs)):
+                best_frequency = peak_freqs[i]
+                # t0 = time[0]  # reference epoch n42['times'], n42['corrections']
+                model = ls.model(time, best_frequency)
+                models.append(model)
 
-def chi2(O, E):
-    return np.nansum((O - E)**2 / E)
+        return models
+
+def find_percent_variability(time, flux, models):
+        flux_mean = np.nanmean(flux)
+        flux_std = np.nanstd(flux)
+        flux_variability = 100 * flux_std / flux_mean 
+
+        model_variabilities = []
+        flux_minus_model_variabilities = []
+
+        for model in models:  
+                model_mean = np.nanmean(model)
+                model_max = np.nanmax(model)
+
+                model_variability = 100 * (model_max - model_mean) / model_mean
+                model_variabilities.append(model_variability)
+
+                flux_minus_model = flux - model
+                flux_minus_model_std = np.nanstd(flux_minus_model)
+                flux_minus_model_variability = 100 * flux_minus_model_std / flux_mean
+                flux_minus_model_variabilities.append(flux_minus_model_variability)
+
+        return flux_variability, model_variabilities, flux_minus_model_variabilities
