@@ -9,7 +9,7 @@ import seaborn as sns
 from astropy.io import fits
 
 from frequency_analysis.wind_equations import *
-from frequency_analysis.utility_functions import chi2
+from frequency_analysis.long_term_tends import chi2
 
 # ~~~ LATITUDE SOLUTIONS ~~~
 
