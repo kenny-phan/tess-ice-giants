@@ -136,9 +136,9 @@ def stack_segments_by_time(time_half, flux_half, half_ratio, total_segs=10):
             start = np.argmin(np.abs(segment - segment[0] - j * time_length))
             end = np.argmin(np.abs(segment  - segment[0] - (j + 1) * time_length))
 
-            print(f"Segment {i} part {j}: {segment[start]} to {segment[end]}")
-            this_time, this_segment = time_half[i][mask_nans][start:end], flux_half[i][mask_nans][start:end]
-
+            print(f"Segment {i + 1} part {j + 1}: {segment[start]} to {segment[end]}")
+            this_time, this_segment = time_half[i][start:end], flux_half[i][start:end]
+            print(this_time.shape, this_segment.shape)
             time_stack.append(this_time)
             flux_stack.append(this_segment)
 

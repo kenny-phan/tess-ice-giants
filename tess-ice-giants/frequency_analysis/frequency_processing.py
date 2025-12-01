@@ -36,9 +36,9 @@ def linear_detrend(time, flux):
 
     return linear_fit, line, detrended
 
-def detrend_all(target_id, observer_id, data_file):
-    time, _, orbit_corrected = run_orbit_correction(target_id, observer_id, data_file)
-    linear_fit, line, detrended = linear_detrend(time, orbit_corrected)
+def detrend_all(target_id, observer_id, data_file, crop_range=None):
+    time, raw, orbit_corrected = run_orbit_correction(target_id, observer_id, data_file, crop_range=crop_range)
+    _, _, detrended = linear_detrend(time, orbit_corrected)
 
-    return time, orbit_corrected, linear_fit, line, detrended
+    return time, raw, orbit_corrected, detrended
 

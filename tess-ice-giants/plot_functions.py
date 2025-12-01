@@ -9,7 +9,7 @@ import seaborn as sns
 from astropy.io import fits
 
 from frequency_analysis.wind_equations import *
-from frequency_analysis.long_term_tends import chi2
+from frequency_analysis.long_term_trends import chi2
 
 # ~~~ LATITUDE SOLUTIONS ~~~
 
@@ -32,11 +32,11 @@ def plot_neptune_equations(ax, phi, colors, h_band=False, linewidth=2):
     tollefson2013_kp = six_order_fit(-415, 2.35e-1, -2.23e-5)
     tollefson2014_kp = six_order_fit(-433, 2.4e-1, -2.73e-5)
 
-    ax.plot(sromovsky1993_four(phi), phi * 180 / np.pi, label="Voyager 4th Order", color=colors[0], linewidth=linewidth)
-    ax.plot(sromovsky1993_six(phi), phi * 180 / np.pi, label="Voyager 6th Order", color=colors[1], linewidth=linewidth)
+    ax.plot(sromovsky1993_four(phi), phi * 180 / np.pi, label="Sromovsky+ (1993) [4th Ord.]", color=colors[0], linewidth=linewidth)
+    ax.plot(sromovsky1993_six(phi), phi * 180 / np.pi, label="Sromovsky+ (1993) [6th Ord.]", color=colors[1], linewidth=linewidth)
 
-    ax.plot(tollefson2013_kp(phi), phi * 180 / np.pi, label="Keck K' 2013", color=colors[2], linewidth=linewidth)
-    ax.plot(tollefson2014_kp(phi), phi * 180 / np.pi, label="Keck K' 2014", color=colors[3], linewidth=linewidth)
+    ax.plot(tollefson2013_kp(phi), phi * 180 / np.pi, label="Tollefson+ (2018) [K' 2013]", color=colors[2], linewidth=linewidth)
+    ax.plot(tollefson2014_kp(phi), phi * 180 / np.pi, label="Tollefson+ (2018) [K' 2014]", color=colors[3], linewidth=linewidth)
 
     if h_band:
         tollefson2013_h = six_order_fit(-325, 1.58e-1, -1.21e-5)
@@ -45,10 +45,10 @@ def plot_neptune_equations(ax, phi, colors, h_band=False, linewidth=2):
         ax.plot(tollefson2014_h(phi), phi * 180 / np.pi, label="T18 H 2014")
 
 def plot_uranus_equations(ax, phi, colors, older=False, linewidth=2):
-
-    ax.plot(sromovsky2012_odd_N(phi), phi * 180 / np.pi, label="Legendre 1997-2011", color=colors[0], linewidth=linewidth)
+    # Legendre 1997-2011, Voyager & 2012-2014
+    ax.plot(sromovsky2012_odd_N(phi), phi * 180 / np.pi, label="Sromovsky+ (2012) [1997-2011]", color=colors[0], linewidth=linewidth)
     s15 = make_sromovsky2015()
-    ax.plot(s15(phi), phi * 180 / np.pi, label="Voyager & 2012-2014", color=colors[1], linewidth=linewidth)
+    ax.plot(s15(phi), phi * 180 / np.pi, label="Sromovsky+ (2015)", color=colors[1], linewidth=linewidth)
 
     if older:
         tollefson2013_h = six_order_fit(-325, 1.58e-1, -1.21e-5)

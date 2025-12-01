@@ -16,11 +16,12 @@ def chi2(O, E):
     return np.nansum((O - E)**2 / E)
 
 def bootstrap_peak_periods(time, flux, fap_level=0.01, n_bootstraps=1000, boot_percent=0.7, 
-                           min_period=5, max_period=20, n_freqs=1000, plot=False, n_plot=100): 
+                           min_period=5, max_period=20, n_freqs=10000, plot=False, n_plot=100): 
     """Bootstrap the peak periods from the Lomb-Scargle periodogram of the lightcurve.""" 
     peak_periods = [] 
     n_data = len(time) 
     freq_grid = np.linspace(1/max_period, 1/min_period, n_freqs)
+    np.random.seed(42)
     
     for i in tqdm(range(n_bootstraps)): 
         sample_indices = np.random.choice(n_data, size=int(boot_percent*n_data), replace=True) 
@@ -47,7 +48,8 @@ def bootstrap_peak_periods(time, flux, fap_level=0.01, n_bootstraps=1000, boot_p
             plt.xlabel("Period [Days]")
             plt.ylabel("Power")
     
-    plt.legend()
+    if plot: 
+        plt.legend()
     
     return np.concatenate(peak_periods)
 
