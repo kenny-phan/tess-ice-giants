@@ -14,32 +14,40 @@ def correct_and_save_light_curves(target_id_arr, observer_id_arr, data_file_arr,
         np.savez(save_dir + f"{name_arr[i]}.npz", time=time, raw=raw, orbit_corrected=orbit_corrected, detrended=detrended)
 
 
-def save_periodograms(sector_data_list, sector_data_strings, root):
+def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='detrended', 
+                      minimum_frequency=1, maximum_frequency=3,
+                      samples_per_peak=10):
+    
     for i, sector_data in tqdm(enumerate(sector_data_list)):
-        frequency, power, false_alarm_levels = make_periodogram(sector_data['time'], sector_data['detrended'])
+        frequency, power, false_alarm_levels = make_periodogram(sector_data['time'], sector_data[flux_type],
+                                                                minimum_frequency=minimum_frequency, 
+                                                                maximum_frequency=maximum_frequency,
+                                                                samples_per_peak=samples_per_peak)
         peaks, peak_pows = get_peak_frequencies(frequency, power, false_alarm_levels[0])
         # print(false_alarm_levels)
-        np.savez(root + f'periodograms/{sector_data_strings[i]}_periodogram.npz', 
+        np.savez(root + f'{sector_data_strings[i]}_periodogram.npz', 
                 frequency=frequency, power=power, false_alarm_levels=false_alarm_levels,
                 peaks=peaks, peak_pows=peak_pows)
         
         
-def save_bootstrap(sector_data_list, sector_data_strings, root):
+def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_level=0.1, min_period=0.1, max_period=1,
+                   n_freqs=int(1e5), n_bootstraps=10000, plot=True):
+    
     for i, sector_data in enumerate(sector_data_list):
-        peak_periods = bootstrap_peak_periods(sector_data['time'], sector_data['detrended'], fap_level=0.1, 
-                                                min_period=0.1, max_period=1, n_freqs=int(1e5), 
-                                                n_bootstraps=10000, plot=True)
+        peak_periods = bootstrap_peak_periods(sector_data['time'], sector_data[flux_type], fap_level=fap_level, 
+                                                min_period=min_period, max_period=max_period, n_freqs=n_freqs, 
+                                                n_bootstraps=n_bootstraps, plot=plot)
         # labels, all_means, all_stds = cluster_peaks(peak_periods, eps=0.0001, plot=True, n_cols=3)
-        np.savez(root + f'periodograms/{sector_data_strings[i]}_bootstrap.npz', 
+        np.savez(root + f'{sector_data_strings[i]}_bootstrap.npz', 
                  peak_periods=peak_periods)#, labels=labels, all_means=all_means, all_stds=all_stds)
         
 
-def cluster_save(periodograms, peak_periods_list, sector_data_strings, save_dir, plot=False, eps=0.0001, ncols=3):
+def cluster_save(periodograms, peak_periods_list, sector_data_strings, save_dir, plot=False, eps=0.0001, tolerance= 0.005, ncols=3):
     for i, peak_periods in enumerate(peak_periods_list):
         _, all_means, all_stds = cluster_peaks(peak_periods, eps=eps, plot=plot, n_cols=ncols)
         peak_periodogram_periods = np.array(1/periodograms[i]['peaks'])
         xmatch = np.abs(peak_periodogram_periods[:, np.newaxis] - np.array(all_means))
-        potential_matches = np.abs(xmatch) < 0.005
+        potential_matches = np.abs(xmatch) < tolerance
         closest_matches, _ = np.unique(np.where(potential_matches)[1], return_counts=True)
 
         matched_means = np.array(all_means)[closest_matches]
@@ -57,18 +65,18 @@ def cluster_save(periodograms, peak_periods_list, sector_data_strings, save_dir,
 
 
 def mcmc_save(wind_eqns, wind_eqn_errs, cluster_arr, 
-              R, P, R_err, P_err, 
+              Re, Rp, P, Re_err, Rp_err, P_err, 
               wind_eqn_strings, sector_data_string, root,
               min_freq_threshold=0.5):
     
-    min_freq_arr = get_minimum_frequency_arr(wind_eqns, R, P)
+    min_freq_arr = get_minimum_frequency_arr(wind_eqns, Re, Rp, P)
     model_eqn = RHS()
 
     phi_super_arr = []
     i = 0
     for wind_eqn, wind_eqn_err in zip(wind_eqns, wind_eqn_errs):
-        freq_eqn = PHI(wind_eqn, R, P) 
-        net_sigma = sigma(wind_eqn, R, P, wind_eqn_err, R_err, P_err)
+        freq_eqn = PHI(wind_eqn, Re, Rp, P) 
+        net_sigma = sigma(wind_eqn, Re, Rp, P, wind_eqn_err, Re_err, Rp_err, P_err)
 
         if (min_freq_arr[i] > min_freq_threshold):
             min_freq = min_freq_arr[i] 

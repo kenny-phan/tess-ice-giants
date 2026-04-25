@@ -134,7 +134,7 @@ def get_models(time, flux, peak_freqs):
 
         return models
 
-def find_percent_variability(time, flux, models):
+def find_percent_variability(flux, models):
         flux_mean = np.nanmean(flux)
         flux_std = np.nanstd(flux)
         flux_variability = 100 * flux_std / flux_mean 
@@ -155,3 +155,5 @@ def find_percent_variability(time, flux, models):
                 flux_minus_model_variabilities.append(flux_minus_model_variability)
 
         return flux_variability, model_variabilities, flux_minus_model_variabilities
+
+
