@@ -9,6 +9,7 @@ from scipy.stats import norm, skew, gaussian_kde
 from scipy.optimize import minimize_scalar, root_scalar
 from scipy.signal import find_peaks
 
+from frequency_analysis.cluster_peaks import fit_gaussian
 from frequency_analysis.wind_equations import frequency_wind_speed
 
 # Log-likelihood function
@@ -194,60 +195,6 @@ def solve_intersection_at_phi(wind_eqn, freq_eqn, bounds=(0.01, 2), phi=0.0):
 ## POSTERIOR STATISTICAL CLASSIFICATION FUNCTIONS ##
 
 # fit a gaussian to the mcmc posteriors
-def fit_gaussian(phi_deg_array, n_components=None, plot=False):
-    
-    latitudes = []
-    standard_devs = []
-
-    for _, phi_deg in enumerate(phi_deg_array):
-        bell = np.abs(phi_deg)
-        data_reshaped = bell.reshape(-1, 1)
-
-        if n_components is not None:
-            gmm = GaussianMixture(n_components=n_components, random_state=42)
-            gmm.fit(data_reshaped)
-            means = gmm.means_.flatten()
-            stds = np.sqrt(gmm.covariances_).flatten()
-            
-            if plot:
-                # Plotting
-                x = np.linspace(bell.min(), bell.max(), 1000).reshape(-1, 1)
-                logprob = gmm.score_samples(x)
-                pdf = np.exp(logprob)
-                plt.plot(x, pdf, label=f"{n_components}-Gaussian GMM", color="red")
-        
-        else:
-            mean = np.mean(bell)
-            std = np.std(bell)
-            means = np.array([mean])
-            stds = np.array([std])
-            
-            if plot: 
-                # Plotting
-                x = np.linspace(bell.min(), bell.max(), 1000)
-                pdf = norm.pdf(x, loc=mean, scale=std)
-                plt.plot(x, pdf, label="Single Gaussian", color="blue")
-
-        latitudes.append(means)
-        standard_devs.append(stds)
-
-        if plot:
-            # Histogram
-            plt.hist(bell, bins=50, density=True, alpha=0.5, label="Data")
-            plt.legend()
-            distribution_type = ["Unimodal", "Bimodal", "Trimodal"]
-            plt.title(f"{distribution_type[n_components - 1]} Gaussian Fit")
-            plt.xlabel("Value")
-            plt.ylabel("Density")
-            plt.ticklabel_format(style='plain', axis='x')
-
-            plt.show()
-    
-            print("Means:", means)
-            print("Standard Deviations:", stds)
-
-    return latitudes, standard_devs
-
 
 def fit_truncated_normal(x, b, mu0=None, sigma0=None):
     x = np.asarray(x)

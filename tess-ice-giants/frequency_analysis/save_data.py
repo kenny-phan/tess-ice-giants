@@ -1,8 +1,9 @@
 import numpy as np
 from tqdm import tqdm
 
-from frequency_analysis.frequency_processing import *
-from frequency_analysis.long_term_trends import bootstrap_peak_periods, cluster_peaks
+from frequency_analysis.orbit_correction import detrend_all
+from frequency_analysis.fullsector import *
+from frequency_analysis.cluster_peaks import bootstrap_peak_periods, cluster_peaks
 from frequency_analysis.mcmc import *
 from frequency_analysis.wind_equations import *
 

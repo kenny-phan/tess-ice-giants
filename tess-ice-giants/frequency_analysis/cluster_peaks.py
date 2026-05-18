@@ -6,14 +6,62 @@ from scipy.stats import norm
 from sklearn.cluster import DBSCAN
 from tqdm import tqdm
 
-from frequency_analysis.frequency_processing import get_peak_frequencies
-from frequency_analysis.mcmc import fit_gaussian
+from frequency_analysis.fullsector import get_peak_frequencies
 
-def z_score(data):
-    return (data - np.nanmedian(data)) / np.nanstd(data)
+def fit_gaussian(phi_deg_array, n_components=None, plot=False):
+    
+    latitudes = []
+    standard_devs = []
 
-def chi2(O, E):
-    return np.nansum((O - E)**2 / E)
+    for _, phi_deg in enumerate(phi_deg_array):
+        bell = np.abs(phi_deg)
+        data_reshaped = bell.reshape(-1, 1)
+
+        if n_components is not None:
+            gmm = GaussianMixture(n_components=n_components, random_state=42)
+            gmm.fit(data_reshaped)
+            means = gmm.means_.flatten()
+            stds = np.sqrt(gmm.covariances_).flatten()
+            
+            if plot:
+                # Plotting
+                x = np.linspace(bell.min(), bell.max(), 1000).reshape(-1, 1)
+                logprob = gmm.score_samples(x)
+                pdf = np.exp(logprob)
+                plt.plot(x, pdf, label=f"{n_components}-Gaussian GMM", color="red")
+        
+        else:
+            mean = np.mean(bell)
+            std = np.std(bell)
+            means = np.array([mean])
+            stds = np.array([std])
+            
+            if plot: 
+                # Plotting
+                x = np.linspace(bell.min(), bell.max(), 1000)
+                pdf = norm.pdf(x, loc=mean, scale=std)
+                plt.plot(x, pdf, label="Single Gaussian", color="blue")
+
+        latitudes.append(means)
+        standard_devs.append(stds)
+
+        if plot:
+            # Histogram
+            plt.hist(bell, bins=50, density=True, alpha=0.5, label="Data")
+            plt.legend()
+            distribution_type = ["Unimodal", "Bimodal", "Trimodal"]
+            plt.title(f"{distribution_type[n_components - 1]} Gaussian Fit")
+            plt.xlabel("Value")
+            plt.ylabel("Density")
+            plt.ticklabel_format(style='plain', axis='x')
+
+            plt.show()
+    
+            print("Means:", means)
+            print("Standard Deviations:", stds)
+
+    return latitudes, standard_devs
+
 
 def bootstrap_peak_periods(time, flux, fap_level=0.01, n_bootstraps=1000, boot_percent=0.7, 
                            min_period=5, max_period=20, n_freqs=10000, plot=False, n_plot=100): 
@@ -122,38 +170,3 @@ def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_co
         plt.show()
 
     return labels, all_means, all_stds
-
-def get_models(time, flux, peak_freqs):
-        ls = LombScargle(time, flux)
-        models = []
-        for i in range(len(peak_freqs)):
-                best_frequency = peak_freqs[i]
-                # t0 = time[0]  # reference epoch n42['times'], n42['corrections']
-                model = ls.model(time, best_frequency)
-                models.append(model)
-
-        return models
-
-def find_percent_variability(flux, models):
-        flux_mean = np.nanmean(flux)
-        flux_std = np.nanstd(flux)
-        flux_variability = 100 * flux_std / flux_mean 
-
-        model_variabilities = []
-        flux_minus_model_variabilities = []
-
-        for model in models:  
-                model_mean = np.nanmean(model)
-                model_max = np.nanmax(model)
-
-                model_variability = 100 * (model_max - model_mean) / model_mean
-                model_variabilities.append(model_variability)
-
-                flux_minus_model = flux - model
-                flux_minus_model_std = np.nanstd(flux_minus_model)
-                flux_minus_model_variability = 100 * flux_minus_model_std / flux_mean
-                flux_minus_model_variabilities.append(flux_minus_model_variability)
-
-        return flux_variability, model_variabilities, flux_minus_model_variabilities
-
-

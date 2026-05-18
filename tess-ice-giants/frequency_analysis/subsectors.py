@@ -1,7 +1,7 @@
 import numpy as np
 from astropy.timeseries import LombScargle
 
-from frequency_analysis.frequency_processing import linear_detrend
+from frequency_analysis.orbit_correction import linear_detrend
 
 def split(x, m):
     """Get indices of light curve cut off points"""
