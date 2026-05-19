@@ -3,18 +3,17 @@ import matplotlib.pyplot as plt
 import emcee
 import warnings
 
-from sklearn.mixture import GaussianMixture
 from scipy import optimize, stats
 from scipy.stats import norm, skew, gaussian_kde
 from scipy.optimize import minimize_scalar, root_scalar
 from scipy.signal import find_peaks
 
-from frequency_analysis.cluster_peaks import fit_gaussian
-from frequency_analysis.wind_equations import frequency_wind_speed
+from bootstrap import fit_gaussian
+from wind_equations import frequency_wind_speed, RHS, PHI, sigma
 
 # Log-likelihood function
 def log_likelihood(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn):
-    model = model_eqn(phi)
+    model = model_eqn()
     expected = freq_eqn(phi, f_obs)
     sigma = sigma_eqn(phi, f_obs, f_err)
     return -0.5 * np.sum(((model - expected) / sigma)**2)
@@ -141,39 +140,6 @@ def get_minimum_frequency_arr(wind_eqns, Req, Rp, P):
         minimum_frequency = find_minimum_frequency(wind_eqn, frequency_wind_speed(Req, Rp, P))
         minimum_frequencys.append(minimum_frequency)
     return np.array(minimum_frequencys)
-
-def group_and_average(arr1, arr2, mean=True):
-    """
-    Groups elements of arr1 so that the number of groups matches the size of arr2.
-    Returns an array of the averages of each group.
-    """
-    arr1 = np.asarray(arr1)
-    arr2 = np.asarray(arr2)
-    
-    len1 = len(arr1)
-    len2 = len(arr2)
-
-    if len2 == 0:
-        raise ValueError("arr2 must have non-zero length.")
-    if len1 < len2:
-        raise ValueError("arr1 must be at least as long as arr2.")
-    
-    # Compute group size (may not be perfect division)
-    group_size = len1 / len2
-
-    result = []
-    for i in range(len2):
-        start = int(round(i * group_size))
-        end = int(round((i + 1) * group_size))
-        group = arr1[start:end]
-        if mean:
-            avg = np.mean(group) if len(group) > 0 else 0
-        else: 
-            avg = np.median(group) if len(group) > 0 else 0
-        result.append(avg)
-
-    print(f"{len(arr1) - len(result)*group_size} data points discarded")
-    return np.array(result)
 
 def solve_intersection_at_phi(wind_eqn, freq_eqn, bounds=(0.01, 2), phi=0.0):
     """
@@ -405,3 +371,50 @@ def fit_all_distributions(phi_distributions_list, wind_eqn_strings, plot=False, 
 def debug_print(verbose, msg=""):
     if verbose == True:
         print(msg)
+
+def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr, 
+              Re, Rp, P, Re_err, Rp_err, P_err, 
+              wind_eqn_strings, sector_data_string, root,
+              min_freq_threshold=0.5):
+    
+    min_freq_arr = get_minimum_frequency_arr(wind_eqns, Re, Rp, P)
+    model_eqn = RHS()
+
+    phi_super_arr = []
+    i = 0
+    for wind_eqn, wind_eqn_err in zip(wind_eqns, wind_eqn_errs):
+        freq_eqn = PHI(wind_eqn, Re, Rp, P) 
+        net_sigma = sigma(wind_eqn, Re, Rp, P, wind_eqn_err, Re_err, Rp_err, P_err)
+
+        if (min_freq_arr[i] > min_freq_threshold):
+            min_freq = min_freq_arr[i] 
+        else: 
+            min_freq_arr[np.argmin(min_freq_arr[min_freq_arr > min_freq_threshold])]
+
+        print(f"Using minimum frequency of {min_freq} for wind equation {wind_eqn_strings[i]}")
+        period_limit = 1 / min_freq
+
+        phi_arr = []
+
+        means_filtered = 1 / cluster_arr['matched_means'][cluster_arr['matched_means'] < period_limit]
+        stds_filtered_periods = cluster_arr['matched_stds'][cluster_arr['matched_means'] < period_limit]
+        stds_filtered = stds_filtered_periods * (means_filtered**2)
+
+        print("Processing wind equation:", wind_eqn_strings[i])
+        for f_obs, f_err in zip(means_filtered, stds_filtered):
+            print("Frequency, error:", f_obs, f_err)
+            sampler = run_mcmc(f_obs, f_err, model_eqn, net_sigma, freq_eqn)
+
+            samples = sampler.get_chain(discard=1000, flat=True)
+            phi_samples = samples[:, 0]
+
+            # Convert to degrees 
+            phi_deg = np.array(np.degrees(phi_samples))
+
+            print("Median latitude (deg):", np.median(phi_deg))
+            phi_arr.append(phi_deg)
+        phi_super_arr.append(phi_arr)
+        i += 1
+
+    np.savez(root + f'{sector_data_string}_phi_distributions.npz', 
+             wind_eqn_strings=wind_eqn_strings, phi_distributions=np.array(phi_super_arr, dtype=object))

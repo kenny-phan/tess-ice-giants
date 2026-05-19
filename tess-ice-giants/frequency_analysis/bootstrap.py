@@ -1,12 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+from sklearn.mixture import GaussianMixture
 from astropy.timeseries import LombScargle
 from scipy.stats import norm
 from sklearn.cluster import DBSCAN
 from tqdm import tqdm
 
-from frequency_analysis.fullsector import get_peak_frequencies
+from fullsector import get_peak_frequencies
 
 def fit_gaussian(phi_deg_array, n_components=None, plot=False):
     
@@ -98,6 +99,7 @@ def bootstrap_peak_periods(time, flux, fap_level=0.01, n_bootstraps=1000, boot_p
     
     if plot: 
         plt.legend()
+        plt.show()
     
     return np.concatenate(peak_periods)
 
@@ -170,3 +172,36 @@ def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_co
         plt.show()
 
     return labels, all_means, all_stds
+
+def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_level=0.1, min_period=0.1, max_period=1,
+                   n_freqs=int(1e5), n_bootstraps=10000, plot=True):
+    
+    for i, sector_data in enumerate(sector_data_list):
+        peak_periods = bootstrap_peak_periods(sector_data['time'], sector_data[flux_type], fap_level=fap_level, 
+                                                min_period=min_period, max_period=max_period, n_freqs=n_freqs, 
+                                                n_bootstraps=n_bootstraps, plot=plot)
+        # labels, all_means, all_stds = cluster_peaks(peak_periods, eps=0.0001, plot=True, n_cols=3)
+        np.savez(root + f'{sector_data_strings[i]}_bootstrap.npz', 
+                 peak_periods=peak_periods)#, labels=labels, all_means=all_means, all_stds=all_stds)
+        
+
+def save_cluster(periodograms, peak_periods_list, sector_data_strings, save_dir, plot=False, eps=0.0001, tolerance= 0.005, ncols=3):
+    for i, peak_periods in enumerate(peak_periods_list):
+        _, all_means, all_stds = cluster_peaks(peak_periods, eps=eps, plot=plot, n_cols=ncols)
+        peak_periodogram_periods = np.array(1/periodograms[i]['peaks'])
+        xmatch = np.abs(peak_periodogram_periods[:, np.newaxis] - np.array(all_means))
+        potential_matches = np.abs(xmatch) < tolerance
+        closest_matches, _ = np.unique(np.where(potential_matches)[1], return_counts=True)
+
+        matched_means = np.array(all_means)[closest_matches]
+        matched_stds = np.array(all_stds)[closest_matches]
+
+        print("Sector:", sector_data_strings[i])
+        print(f"{len(closest_matches)} out of {len(all_means)} All means:", all_means)
+        print(f"{len(peak_periodogram_periods)} Peak periods from periodogram:", peak_periodogram_periods)
+        
+        print(f"matched means:", matched_means)
+        print(f"matched stds:", matched_stds)
+        print()
+        np.savez(save_dir + f'{sector_data_strings[i]}_clustered_peaks.npz', 
+                 matched_means=matched_means, matched_stds=matched_stds)

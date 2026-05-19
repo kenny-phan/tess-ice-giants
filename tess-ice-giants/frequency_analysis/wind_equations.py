@@ -235,8 +235,8 @@ def PHI(model_eqn, Re, Rp, P): # R radius in m, P period in hours
 
 ## RHS of equation 1 after rearrangement
 def RHS():
-    def equation(phi):
-        return 2*np.pi*np.cos(phi) / 86400
+    def equation():
+        return 2*np.pi / 86400
     
     return equation
 

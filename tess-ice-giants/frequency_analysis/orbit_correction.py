@@ -61,6 +61,13 @@ def detrend_all(target_id, observer_id, data_file, crop_range=None):
 
     return time, raw, orbit_corrected, detrended
 
+def correct_and_save_light_curves(target_id_arr, observer_id_arr, data_file_arr, save_dir, name_arr, crop_range_arr=None):
+
+    for i, data_file in enumerate(data_file_arr):
+        time, raw, orbit_corrected, detrended = detrend_all(target_id_arr[i], observer_id_arr[i], data_file, 
+                                                            crop_range=crop_range_arr[i] if crop_range_arr else None)
+        np.savez(save_dir + f"{name_arr[i]}.npz", time=time, raw=raw, orbit_corrected=orbit_corrected, detrended=detrended)
+
 # #duplicate funtions for K2 data, as I am lazy 
 # def get_lightcurve_info_k2(flux_data_file):
 
