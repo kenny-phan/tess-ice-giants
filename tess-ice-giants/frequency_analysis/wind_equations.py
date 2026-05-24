@@ -224,19 +224,20 @@ def sigma_sromovsky2015_S(phi):
 ## MCMC SAMPLING EQUATIONS ##
 
 ## these need to be an equation for emcee sampling
-def PHI(model_eqn, Re, Rp, P): # R radius in m, P period in hours
-    fr = 24/P 
-    R_phi = radius_phi(Re, Rp)
+def PHI(model_eqn): # R radius in m, P period in hours
 
-    def equation(phi, f):
-        return model_eqn(phi) / (R_phi(phi) * (f - fr))
+    def equation(phi):
+        return model_eqn(phi)
 
     return equation
 
 ## RHS of equation 1 after rearrangement
-def RHS():
-    def equation():
-        return 2*np.pi / 86400
+def RHS(Re, Rp, P):
+    fr = 24/P 
+    R_phi = radius_phi(Re, Rp)
+
+    def equation(phi, f):
+        return 2*np.pi * (R_phi(phi) * (f - fr))/ 86400
     
     return equation
 

@@ -13,7 +13,7 @@ from wind_equations import frequency_wind_speed, RHS, PHI, sigma
 
 # Log-likelihood function
 def log_likelihood(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn):
-    model = model_eqn()
+    model = model_eqn(phi)
     expected = freq_eqn(phi, f_obs)
     sigma = sigma_eqn(phi, f_obs, f_err)
     return -0.5 * np.sum(((model - expected) / sigma)**2)
@@ -375,21 +375,21 @@ def debug_print(verbose, msg=""):
 def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr, 
               Re, Rp, P, Re_err, Rp_err, P_err, 
               wind_eqn_strings, sector_data_string, root,
-              min_freq_threshold=0.5):
+              min_freq_threshold=0.5, n_steps=5000):
     
     min_freq_arr = get_minimum_frequency_arr(wind_eqns, Re, Rp, P)
-    model_eqn = RHS()
+    freq_eqn = RHS(Re, Rp, P) 
 
     phi_super_arr = []
     i = 0
     for wind_eqn, wind_eqn_err in zip(wind_eqns, wind_eqn_errs):
-        freq_eqn = PHI(wind_eqn, Re, Rp, P) 
+        model_eqn = PHI(wind_eqn)
         net_sigma = sigma(wind_eqn, Re, Rp, P, wind_eqn_err, Re_err, Rp_err, P_err)
 
         if (min_freq_arr[i] > min_freq_threshold):
             min_freq = min_freq_arr[i] 
         else: 
-            min_freq_arr[np.argmin(min_freq_arr[min_freq_arr > min_freq_threshold])]
+            min_freq = min_freq_arr[np.argmin(min_freq_arr[min_freq_arr > min_freq_threshold])]
 
         print(f"Using minimum frequency of {min_freq} for wind equation {wind_eqn_strings[i]}")
         period_limit = 1 / min_freq
@@ -403,7 +403,7 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
         print("Processing wind equation:", wind_eqn_strings[i])
         for f_obs, f_err in zip(means_filtered, stds_filtered):
             print("Frequency, error:", f_obs, f_err)
-            sampler = run_mcmc(f_obs, f_err, model_eqn, net_sigma, freq_eqn)
+            sampler = run_mcmc(f_obs, f_err, model_eqn, net_sigma, freq_eqn, n_steps=n_steps)
 
             samples = sampler.get_chain(discard=1000, flat=True)
             phi_samples = samples[:, 0]

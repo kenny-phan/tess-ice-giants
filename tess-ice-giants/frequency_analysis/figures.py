@@ -55,7 +55,7 @@ def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10,
     axs.legend(fontsize=12, loc="upper left")
     axs.grid(True)
 
-def lightcurve_and_periodogram_plot(planet, lc_list, periodogram_list, sector_list, root=None):
+def plot_lightcurve_and_periodogram(planet, lc_list, periodogram_list, sector_list, root=None):
 
     # Create the figure
     fig = plt.figure(figsize=(20, 12))        
