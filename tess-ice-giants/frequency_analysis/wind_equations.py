@@ -14,7 +14,7 @@ def frequency_wind_speed(Req, Rp, P): # R radius in m, P period in hours
     fr = 24 / P 
     R_phi = radius_phi(Req, Rp)
     def equation(phi, f):
-        return 2 * np.pi * R_phi(phi) * np.cos(phi) * (f - fr) / 86400
+        return 2 * np.pi * R_phi(phi) * (f - fr) / 86400
     return equation
 
 # Neptune Equations
@@ -34,13 +34,9 @@ def sigma_six_order_fit(sigma_a=0, sigma_b=0, sigma_c=0, sigma_d=0):
 
 # Copy + paste the following to get equations from Sromovsky+ 1993 & Tollefson+ 2018
 """
-sromovsky1993_four = six_order_fit(-398, 1.88e-1, -1.2e-5)
-sromovsky1993_six = six_order_fit(-389, 1.53e-1, 1.01e-5, -3.1e-9)
-
+unused hband fits
 tollefson2013_h = six_order_fit(-325, 1.58e-1, -1.21e-5)
-tollefson2013_kp = six_order_fit(-415, 2.35e-1, -2.23e-5)
 tollefson2014_h = six_order_fit(-292, 1.45e-1, -1.18e-5)
-tollefson2014_kp = six_order_fit(-433, 2.4e-1, -2.73e-5)
 """
 
 sromovsky1993_four = six_order_fit(-398, 1.88e-1, -1.2e-5)
@@ -74,7 +70,7 @@ def hammel2001(phi):
 
 # Sromovsky+ 2012c 
 
-def Rphi(phi): # eqn 5 in S2012c
+def ur_Rphi(phi): # eqn 5 in S2012c
     Re = 25559
     Rp = 24973
     return Re / np.sqrt(1 + (np.tan(phi)*(Rp/Re))**2)
@@ -86,7 +82,7 @@ def sromovsky2012_even(phi): # for 1997-2011
     sin_phi = np.sin(phi)
     leg_sum = sum(c * eval_legendre(l, sin_phi) for l, c in enumerate(coeffs)) # eqn 3
     
-    return leg_sum * 4.8481e-3 * Rphi(phi) # eqn 4
+    return leg_sum * 4.8481e-3 * ur_Rphi(phi) # eqn 4
 
 def sromovsky2012_odd_N(phi): # for 1997-2011
     coeffs = [1.24197012, -0.02848715, 3.69457598, 0.08752786, 
@@ -96,10 +92,10 @@ def sromovsky2012_odd_N(phi): # for 1997-2011
     sin_phi = np.sin(phi)
     leg_sum = sum(c * eval_legendre(l, sin_phi) for l, c in enumerate(coeffs)) # eqn 3
     
-    return leg_sum * 4.8481e-3 * Rphi(phi) # eqn 4
+    return leg_sum * 4.8481e-3 * ur_Rphi(phi) # eqn 4, m/s
 
 def sromovsky2012_odd_S(phi):
-    return sromovsky2012_odd_N(-phi)
+    return sromovsky2012_odd_N(-phi) # m/s
 
 ## sromovsky2012 error propagation
 def sigma_Rphi(Re = 25559, Rp = 24973, sigma_Re = 4, sigma_Rp = 20):
@@ -121,7 +117,7 @@ def sigma_sromovsky2012_odd_N(phi):
     constant = 4.8481e-3
 
     dU_dRphi = constant * leg_sum
-    dU_dleg_sum = constant * Rphi(phi)
+    dU_dleg_sum = constant * ur_Rphi(phi)
 
     reperr = 0.088 # degrees/h, pg. 11 of Sromovsky+ 2012c
     dr = sigma_Rphi()
@@ -208,7 +204,7 @@ def sigma_sromovsky2015_N(phi):
     dphi_dt = sromovsky2015_degrees_N(phi)
 
     dU_dRphi = constant * dphi_dt
-    dU_ddphi_dt = constant * Rphi(phi)
+    dU_ddphi_dt = constant * ur_Rphi(phi)
 
     dr = sigma_Rphi()
     ddphi_dt = 0.147 # degrees/day, pg. 11 of Sromovsky+ 2015
@@ -224,7 +220,7 @@ def sigma_sromovsky2015_S(phi):
 ## MCMC SAMPLING EQUATIONS ##
 
 ## these need to be an equation for emcee sampling
-def PHI(model_eqn): # R radius in m, P period in hours
+def U_PHI(model_eqn): # R radius in m, P period in hours
 
     def equation(phi):
         return model_eqn(phi)

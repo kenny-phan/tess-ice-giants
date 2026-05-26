@@ -9,14 +9,15 @@ from scipy.optimize import minimize_scalar, root_scalar
 from scipy.signal import find_peaks
 
 from bootstrap import fit_gaussian
-from wind_equations import frequency_wind_speed, RHS, PHI, sigma
+from wind_equations import frequency_wind_speed, RHS, U_PHI, sigma
 
 # Log-likelihood function
+# phi radians, f_obs 1/days, f_err 1/days, model_eqn m/s
 def log_likelihood(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn):
     model = model_eqn(phi)
-    expected = freq_eqn(phi, f_obs)
+    data = freq_eqn(phi, f_obs)
     sigma = sigma_eqn(phi, f_obs, f_err)
-    return -0.5 * np.sum(((model - expected) / sigma)**2)
+    return -0.5 * np.sum(((data - model) / sigma)**2)
 
 # Log-prior (uniform in latitude range)
 def log_prior(phi):
@@ -34,7 +35,7 @@ def log_probability(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn):
 # Run the sampler
 def run_mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_walkers=32, n_steps=5000):
     ndim = 1
-    # Initialize walkers around 0 (equator)
+    # Initialize walkers anywhere from 0 to 90 degrees
     initial_pos = np.random.uniform(0.1, np.pi/2 - 0.1, size=(n_walkers, ndim))
 
     sampler = emcee.EnsembleSampler(n_walkers, ndim, log_probability, args=(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn))
@@ -108,7 +109,7 @@ def runanalysis(f, eqn, freq_eqn, n_components=2, plot=True):
 def residual(phi, f, wind_eqn, freq_eqn):
     return freq_eqn(phi, f) - wind_eqn(phi)
 
-# Check if for a given f, residual = 0 has any solution in φ ∈ [a, b]
+# Check if for a given f, residual = 0 has any solution in in phi between range
 def has_root(f, wind_eqn, freq_eqn, phi_range=(-np.pi/2, np.pi/2), num_points=1000):
     phi_vals = np.linspace(phi_range[0], phi_range[1], num_points)
     res_vals = residual(phi_vals, f, wind_eqn, freq_eqn)
@@ -383,21 +384,28 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
     phi_super_arr = []
     i = 0
     for wind_eqn, wind_eqn_err in zip(wind_eqns, wind_eqn_errs):
-        model_eqn = PHI(wind_eqn)
+        model_eqn = U_PHI(wind_eqn)
         net_sigma = sigma(wind_eqn, Re, Rp, P, wind_eqn_err, Re_err, Rp_err, P_err)
 
+        # if the minumum frequency is extremely low, use the next lowest frequency that is above the threshold
         if (min_freq_arr[i] > min_freq_threshold):
             min_freq = min_freq_arr[i] 
         else: 
             min_freq = min_freq_arr[np.argmin(min_freq_arr[min_freq_arr > min_freq_threshold])]
 
         print(f"Using minimum frequency of {min_freq} for wind equation {wind_eqn_strings[i]}")
-        period_limit = 1 / min_freq
+        period_limit = 1 / min_freq # maximum period in days
 
         phi_arr = []
 
+        # default units of 'matched means' is days
+        # take only the peaks that are below the period limit, convert to 1/days
         means_filtered = 1 / cluster_arr['matched_means'][cluster_arr['matched_means'] < period_limit]
+
+        # standard deviations, default units of days
         stds_filtered_periods = cluster_arr['matched_stds'][cluster_arr['matched_means'] < period_limit]
+
+        # uncertainty in frequency is related to uncertainty in period by sigma_f = (1/P^2) * sigma_P, where P is the period
         stds_filtered = stds_filtered_periods * (means_filtered**2)
 
         print("Processing wind equation:", wind_eqn_strings[i])
