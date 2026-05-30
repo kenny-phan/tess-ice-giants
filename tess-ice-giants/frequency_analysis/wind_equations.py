@@ -10,12 +10,12 @@ def radius_phi(R_eq, R_p):
     return R_phi
 
 # frequency to wind speed equation
-def frequency_wind_speed(Req, Rp, P): # R radius in m, P period in hours
-    fr = 24 / P 
-    R_phi = radius_phi(Req, Rp)
-    def equation(phi, f):
-        return 2 * np.pi * R_phi(phi) * (f - fr) / 86400
-    return equation
+# def frequency_wind_speed(Req, Rp, P): # R radius in m, P period in hours
+#     fr = 24 / P 
+#     R_phi = radius_phi(Req, Rp)
+#     def equation(phi, f):
+#         return 2 * np.pi * R_phi(phi) * (f - fr) / 86400
+#     return equation
 
 # Neptune Equations
 
@@ -28,7 +28,10 @@ def six_order_fit(a=0, b=0, c=0, d=0):
 def sigma_six_order_fit(sigma_a=0, sigma_b=0, sigma_c=0, sigma_d=0):
 
     def equation(phi):
-        return np.sqrt(sigma_a**2 + (phi*sigma_b)**2 + (phi**2*sigma_c)**2 + (phi**2*sigma_d)**2)
+        return np.sqrt(sigma_a**2 + 
+                       (np.degrees(phi)**2)*(sigma_b**2) + 
+                       (np.degrees(phi)**4)*(sigma_c**2) + 
+                       (np.degrees(phi)**6)*(sigma_d**2))
     
     return equation
 
@@ -75,12 +78,16 @@ def ur_Rphi(phi): # eqn 5 in S2012c
     Rp = 24973
     return Re / np.sqrt(1 + (np.tan(phi)*(Rp/Re))**2)
 
+def legendre_fit(phi, coeffs): # eqn 3 in S2012c
+    sin_phi = np.sin(phi)
+    leg_sum = sum(c * eval_legendre(l, sin_phi) for l, c in enumerate(coeffs))
+    return leg_sum
+
 def sromovsky2012_even(phi): # for 1997-2011
     coeffs = [1.25037831, 0, 3.72050211, 0, 0.12041514, 0, 
               -0.73555624, 0, -0.34206461, 0, 0.20553095, 0, 0.08364616]
     
-    sin_phi = np.sin(phi)
-    leg_sum = sum(c * eval_legendre(l, sin_phi) for l, c in enumerate(coeffs)) # eqn 3
+    leg_sum = legendre_fit(phi, coeffs) # eqn 3
     
     return leg_sum * 4.8481e-3 * ur_Rphi(phi) # eqn 4
 
@@ -89,45 +96,44 @@ def sromovsky2012_odd_N(phi): # for 1997-2011
               0.15287708, -0.13202142, -0.65646542, -0.08292523, 
               -0.31793598, 0.09172810, 0.15934681, 0.06504432, 0.02752308]
     
-    sin_phi = np.sin(phi)
-    leg_sum = sum(c * eval_legendre(l, sin_phi) for l, c in enumerate(coeffs)) # eqn 3
+    leg_sum = legendre_fit(phi, coeffs) # eqn 3
     
     return leg_sum * 4.8481e-3 * ur_Rphi(phi) # eqn 4, m/s
 
 def sromovsky2012_odd_S(phi):
     return sromovsky2012_odd_N(-phi) # m/s
 
-## sromovsky2012 error propagation
-def sigma_Rphi(Re = 25559, Rp = 24973, sigma_Re = 4, sigma_Rp = 20):
+# # OLD sromovsky2012 error propagation
+# def sigma_Rphi(Re = 25559, Rp = 24973, sigma_Re = 4, sigma_Rp = 20):
 
-    def eqn(phi):
-        dRphi_dRe = (1 / np.sqrt(1 + (np.tan(phi)*(Rp/Re))**2)) * (1 + (np.tan(phi)*(Rp/Re))**2)**(-3/2) * (np.tan(phi)*(Rp/Re))**2 / Re
-        dRphi_dRp = (1 + (np.tan(phi)*(Rp/Re))**2)**(-3/2) * (np.tan(phi)**2 * Rp / Re)
-        return np.sqrt((dRphi_dRe * sigma_Re)**2 + (dRphi_dRp * sigma_Rp)**2)
+#     def eqn(phi):
+#         dRphi_dRe = (1 / np.sqrt(1 + (np.tan(phi)*(Rp/Re))**2)) * (1 + (np.tan(phi)*(Rp/Re))**2)**(-3/2) * (np.tan(phi)*(Rp/Re))**2 / Re
+#         dRphi_dRp = (1 + (np.tan(phi)*(Rp/Re))**2)**(-3/2) * (np.tan(phi)**2 * Rp / Re)
+#         return np.sqrt((dRphi_dRe * sigma_Re)**2 + (dRphi_dRp * sigma_Rp)**2)
 
-    return eqn
+#     return eqn
 
-def sigma_sromovsky2012_odd_N(phi):
-    coeffs = [1.24197012, -0.02848715, 3.69457598, 0.08752786, 
-              0.15287708, -0.13202142, -0.65646542, -0.08292523, 
-              -0.31793598, 0.09172810, 0.15934681, 0.06504432, 0.02752308]
+# def sigma_sromovsky2012_odd_N(phi):
+#     coeffs = [1.24197012, -0.02848715, 3.69457598, 0.08752786, 
+#               0.15287708, -0.13202142, -0.65646542, -0.08292523, 
+#               -0.31793598, 0.09172810, 0.15934681, 0.06504432, 0.02752308]
     
-    sin_phi = np.sin(phi)
-    leg_sum = sum(c * eval_legendre(l, sin_phi) for l, c in enumerate(coeffs)) # eqn 3
-    constant = 4.8481e-3
+#     sin_phi = np.sin(phi)
+#     leg_sum = sum(c * eval_legendre(l, sin_phi) for l, c in enumerate(coeffs)) # eqn 3
+#     constant = 4.8481e-3
 
-    dU_dRphi = constant * leg_sum
-    dU_dleg_sum = constant * ur_Rphi(phi)
+#     dU_dRphi = constant * leg_sum
+#     dU_dleg_sum = constant * ur_Rphi(phi)
 
-    reperr = 0.088 # degrees/h, pg. 11 of Sromovsky+ 2012c
-    dr = sigma_Rphi()
+#     reperr = 0.088 # degrees/h, pg. 11 of Sromovsky+ 2012c
+#     dr = sigma_Rphi()
 
-    return np.sqrt((dU_dRphi * dr(phi))**2 + (dU_dleg_sum * reperr)**2)
+#     return np.sqrt((dU_dRphi * dr(phi))**2 + (dU_dleg_sum * reperr)**2)
 
-def sigma_sromovsky2012_odd_S(phi):
-    return sigma_sromovsky2012_odd_N(-phi)
+# def sigma_sromovsky2012_odd_S(phi):
+#     return sigma_sromovsky2012_odd_N(-phi)
 
-## Sromovsky+ 2015
+# Sromovsky+ 2015
 
 def make_sromovsky2015():
     points = [0.00, 9.07, 18.15, 27.21, 36.27, 45.31, 54.34, 63.35, 72.33, 81.29,
@@ -198,24 +204,24 @@ sromovsky2015_degrees_N = make_sromovsky2015_degrees()
 def sromovsky2015_degrees_S(phi):
     return sromovsky2015_degrees_N(-phi)
 
-# error for sromovsky2015
-def sigma_sromovsky2015_N(phi):
-    constant = 4.8481e-3
-    dphi_dt = sromovsky2015_degrees_N(phi)
+# #OLD error for sromovsky2015
+# def sigma_sromovsky2015_N(phi):
+#     constant = 4.8481e-3
+#     dphi_dt = sromovsky2015_degrees_N(phi)
 
-    dU_dRphi = constant * dphi_dt
-    dU_ddphi_dt = constant * ur_Rphi(phi)
+#     dU_dRphi = constant * dphi_dt
+#     dU_ddphi_dt = constant * ur_Rphi(phi)
 
-    dr = sigma_Rphi()
-    ddphi_dt = 0.147 # degrees/day, pg. 11 of Sromovsky+ 2015
-    # note: the above "reperr" only relates to the Legendre fit used 
-    # latitudes 46S to 67N, and does not neccesarily reflect the entire 
-    # error of that portion. Nonetheless, we use it as an estimate.
+#     dr = sigma_Rphi()
+#     ddphi_dt = 0.147 # degrees/day, pg. 11 of Sromovsky+ 2015
+#     # note: the above "reperr" only relates to the Legendre fit used 
+#     # latitudes 46S to 67N, and does not neccesarily reflect the entire 
+#     # error of that portion. Nonetheless, we use it as an estimate.
 
-    return np.sqrt((dU_dRphi * dr(phi))**2 + (dU_ddphi_dt * ddphi_dt)**2)
+#     return np.sqrt((dU_dRphi * dr(phi))**2 + (dU_ddphi_dt * ddphi_dt)**2)
 
-def sigma_sromovsky2015_S(phi):
-    return sigma_sromovsky2015_N(-phi)
+# def sigma_sromovsky2015_S(phi):
+#     return sigma_sromovsky2015_N(-phi)
 
 ## MCMC SAMPLING EQUATIONS ##
 
@@ -237,52 +243,172 @@ def RHS(Re, Rp, P):
     
     return equation
 
+def dR_dRe(Re, Rp):
+    R_phi = radius_phi(Re, Rp)
+
+    def equation(phi):
+        return (R_phi(phi) / Re) * (1 + (R_phi(phi)*np.tan(phi)*Rp/(Re**2))**2)
+    
+    return equation
+
+def dR_dRp(Re, Rp):
+    R_phi = radius_phi(Re, Rp)
+
+    def equation(phi):
+        return -(R_phi(phi)**3)*(np.tan(phi)**2)*Rp / (Re**4)
+    
+    return equation
+
+def dU_dRphi(Re, Rp, dR, fr):
+    dr = dR(Re, Rp)
+
+    def equation(phi, f):
+        return 2*np.pi * dr(phi) * (f - fr) / 86400
+    
+    return equation
+
+def dU_df(Re, Rp):
+    R_phi = radius_phi(Re, Rp)
+
+    def equation(phi):
+        return 2*np.pi * R_phi(phi) / 86400
+    
+    return equation
+
+def dU_dfr(Re, Rp):
+    R_phi = radius_phi(Re, Rp)
+
+    def equation(phi):
+        return -2*np.pi * R_phi(phi) / 86400
+    
+    return equation
+
+def sigma_U(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P):
+    fr = 24/P
+    sigma_fr = 24*sigma_P / P**2
+    du_dre = dU_dRphi(Re, Rp, dR_dRe, fr)
+    du_drp = dU_dRphi(Re, Rp, dR_dRp, fr)
+    du_df = dU_df(Re, Rp)
+    du_dfr = dU_dfr(Re, Rp)
+
+    def equation(phi, f, sigma_f):
+        Re_contribution = (du_dre(phi, f) * sigma_Re)**2
+        Rp_contribution = (du_drp(phi, f) * sigma_Rp)**2
+        f_contribution = (du_df(phi) * sigma_f)**2
+        fr_contribution = (du_dfr(phi) * sigma_fr)**2
+        combined_contribution = np.array(Re_contribution, dtype=float) + np.array(Rp_contribution, dtype=float) + np.array(f_contribution, dtype=float) + np.array(fr_contribution, dtype=float)
+        return np.sqrt(combined_contribution)
+
+    return equation
+
+def sigma(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P, sigma_m_eqn):  
+
+    sigma_u = sigma_U(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P)
+    sigma_m = sigma_m_eqn
+
+    def equation(phi, f, sigma_f):
+        return np.sqrt(sigma_u(phi, f, sigma_f)**2 + sigma_m(phi)**2)
+    return equation
+
+def sigma_R(Re, Rp, sigma_Re, sigma_Rp):
+    dr_dre = dR_dRe(Re, Rp)
+    dr_drp = dR_dRp(Re, Rp)
+
+    def equation(phi):
+        return np.sqrt((dr_dre(phi) * sigma_Re)**2 + (dr_drp(phi) * sigma_Rp)**2)
+    return equation
+
+#NEW  
+def sigma_sromovsky2012_odd_N(phi):
+    coeffs = [1.24197012, -0.02848715, 3.69457598, 0.08752786, 
+              0.15287708, -0.13202142, -0.65646542, -0.08292523, 
+              -0.31793598, 0.09172810, 0.15934681, 0.06504432, 0.02752308]
+    
+    leg_sum = legendre_fit(phi, coeffs) # eqn 3
+    constant = 4.8481e-3
+
+    dU_dR = constant * leg_sum
+    dU_dleg_sum = constant * ur_Rphi(phi)
+
+    reperr = 0.088 # degrees/h, pg. 11 of Sromovsky+ 2012c
+    dr = sigma_R(Re=25559, Rp=24973, sigma_Re=4, sigma_Rp=20)
+
+    return np.sqrt((dU_dR * dr(phi))**2 + (dU_dleg_sum * reperr)**2)
+
+def sigma_sromovsky2012_odd_S(phi):
+    return sigma_sromovsky2012_odd_N(-phi)
+
+#NEW error for sromovsky2015
+def sigma_sromovsky2015_N(phi):
+    constant = 4.8481e-3
+    Re = 25559
+    Rp = 24973
+    sigma_Re = 4
+    sigma_Rp = 20
+    dphi_dt = sromovsky2015_degrees_N(phi)
+
+    dU_dRphi = constant * dphi_dt
+    ur_radius = radius_phi(Re, Rp)
+    dU_ddphi_dt = constant * ur_radius(phi)
+
+    dr = sigma_R(Re=Re, Rp=Rp, sigma_Re=sigma_Re, sigma_Rp=sigma_Rp)
+    ddphi_dt = 0.147 # degrees/day, pg. 11 of Sromovsky+ 2015
+    # note: the above "reperr" only relates to the Legendre fit used 
+    # latitudes 46S to 67N, and does not neccesarily reflect the entire 
+    # error of that portion. Nonetheless, we use it as an estimate.
+
+    return np.sqrt((dU_dRphi * dr(phi))**2 + (dU_ddphi_dt * ddphi_dt)**2)
+
+def sigma_sromovsky2015_S(phi):
+    return sigma_sromovsky2015_N(-phi)
+
+# OLD ERROR PROPAGATION
 # these also have to be equations.. i think.. where model_eqn and model_eqn_err are functions of phi
 # vc stands for variance contribution
-def vc_u(R, P, model_eqn_err): # wind eqn vc
-    fr = 24/P
+# def vc_u(R, P, model_eqn_err): # wind eqn vc
+#     fr = 24/P
 
-    def equation(phi, f):
-        return (model_eqn_err(phi) / (R(phi) * (f - fr)))**2
+#     def equation(phi, f):
+#         return (model_eqn_err(phi) / (R(phi) * (f - fr)))**2
 
-    return equation
+#     return equation
 
-def vc_R(model_eqn, R, P, R_err):
-    fr = 24/P
+# def vc_R(model_eqn, R, P, R_err):
+#     fr = 24/P
 
-    def equation(phi, f):
-        return (R_err(phi) * model_eqn(phi) / (R(phi)*R(phi)*(f - fr)))**2
+#     def equation(phi, f):
+#         return (R_err(phi) * model_eqn(phi) / (R(phi)*R(phi)*(f - fr)))**2
     
-    return equation
+#     return equation
 
-def vc_f(model_eqn, R, P): # f_err is NOT constant! one f_err for each f!
-    fr = 24/P
+# def vc_f(model_eqn, R, P): # f_err is NOT constant! one f_err for each f!
+#     fr = 24/P
 
-    def equation(phi, f, f_err):
-        return (f_err * model_eqn(phi) / (R(phi) * (f - fr)**2))**2
+#     def equation(phi, f, f_err):
+#         return (f_err * model_eqn(phi) / (R(phi) * (f - fr)**2))**2
     
-    return equation
+#     return equation
 
-def vc_fr(model_eqn, R, P, P_err): # f_err is NOT constant! one f_err for each f!
-    fr = 24/P
-    fr_err = P_err / P**2 #error propagate for P -> fr
+# def vc_fr(model_eqn, R, P, P_err): # f_err is NOT constant! one f_err for each f!
+#     fr = 24/P
+#     fr_err = P_err / P**2 #error propagate for P -> fr
 
-    def equation(phi, f):
-        return (fr_err * model_eqn(phi) / (R(phi) * (f - fr)**2))**2
+#     def equation(phi, f):
+#         return (fr_err * model_eqn(phi) / (R(phi) * (f - fr)**2))**2
     
-    return equation
+#     return equation
 
-def sigma(model_eqn, Re, Rp, P, model_eqn_err, Re_err, Rp_err, P_err): # outputs sigma as a function of phi, f, and f_err
+# def sigma(model_eqn, Re, Rp, P, model_eqn_err, Re_err, Rp_err, P_err): # outputs sigma as a function of phi, f, and f_err
     
-    R = radius_phi(Re, Rp)
-    R_err = sigma_Rphi(Re=Re, Rp=Rp, sigma_Re=Re_err, sigma_Rp=Rp_err) # R_err is a function of phi
+#     R = radius_phi(Re, Rp)
+#     R_err = sigma_Rphi(Re=Re, Rp=Rp, sigma_Re=Re_err, sigma_Rp=Rp_err) # R_err is a function of phi
 
-    def equation(phi, f, f_err):
-        vc_uu = vc_u(R, P, model_eqn_err)
-        vc_RR = vc_R(model_eqn, R, P, R_err)
-        vc_ff = vc_f(model_eqn, R, P)
-        vc_frfr = vc_fr(model_eqn, R, P, P_err)
+#     def equation(phi, f, f_err):
+#         vc_uu = vc_u(R, P, model_eqn_err)
+#         vc_RR = vc_R(model_eqn, R, P, R_err)
+#         vc_ff = vc_f(model_eqn, R, P)
+#         vc_frfr = vc_fr(model_eqn, R, P, P_err)
 
-        return np.sqrt(vc_uu(phi, f) + vc_RR(phi, f) + vc_ff(phi, f, f_err) + vc_frfr(phi, f))
+#         return np.sqrt(vc_uu(phi, f) + vc_RR(phi, f) + vc_ff(phi, f, f_err) + vc_frfr(phi, f))
         
-    return equation
+#     return equation

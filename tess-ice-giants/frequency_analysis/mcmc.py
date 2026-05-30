@@ -9,15 +9,15 @@ from scipy.optimize import minimize_scalar, root_scalar
 from scipy.signal import find_peaks
 
 from bootstrap import fit_gaussian
-from wind_equations import frequency_wind_speed, RHS, U_PHI, sigma
+from wind_equations import RHS, U_PHI, sigma
 
 # Log-likelihood function
 # phi radians, f_obs 1/days, f_err 1/days, model_eqn m/s
 def log_likelihood(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn):
     model = model_eqn(phi)
     data = freq_eqn(phi, f_obs)
-    sigma = sigma_eqn(phi, f_obs, f_err)
-    return -0.5 * np.sum(((data - model) / sigma)**2)
+    sigma_func = sigma_eqn
+    return -0.5 * np.sum(((data - model) / sigma_func(phi, f_obs, f_err))**2)
 
 # Log-prior (uniform in latitude range)
 def log_prior(phi):
@@ -77,31 +77,31 @@ def run_mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_walkers=32, n_steps
 #     return sampler
 
 # get latitude solutions for input peak frequency array, wind speed equation, and frequency eqn
-def runanalysis(f, eqn, freq_eqn, n_components=2, plot=True):
+# def runanalysis(f, eqn, freq_eqn, Re, Rp, P, sigma_Re, sigma_Rp, sigma_P, n_components=2, n_steps=5000, plot=True):
     
-    all_lats = []
-    all_stdevs = []
+#     all_lats = []
+#     all_stdevs = []
             
-    phi_deg_array = []
+#     phi_deg_array = []
     
-    for f_obs in f:
-        sampler = run_mcmc(f_obs, eqn, freq_eqn)
+#     for f_obs in f:
+#         sampler = run_mcmc(f_obs, eqn, freq_eqn, n_steps=n_steps)
         
-        # Get the flattened samples
-        samples = sampler.get_chain(discard=1000, flat=True)
-        phi_samples = samples[:, 0]
+#         # Get the flattened samples
+#         samples = sampler.get_chain(discard=1000, flat=True)
+#         phi_samples = samples[:, 0]
         
-        # Convert to degrees 
-        phi_deg = np.degrees(phi_samples)
+#         # Convert to degrees 
+#         phi_deg = np.degrees(phi_samples)
     
-        phi_deg_array.append(phi_deg)
+#         phi_deg_array.append(phi_deg)
     
-    latitudes, standard_devs = fit_gaussian(phi_deg_array, n_components=n_components, plot=plot)
+#     latitudes, standard_devs = fit_gaussian(phi_deg_array, n_components=n_components, plot=plot)
     
-    all_lats.append(latitudes)
-    all_stdevs.append(standard_devs)
+#     all_lats.append(latitudes)
+#     all_stdevs.append(standard_devs)
 
-    return np.array(all_lats), np.array(all_stdevs)
+#     return np.array(all_lats), np.array(all_stdevs)
 
 
 # functions to determine the lower frequency bound of latitude solutions
@@ -138,7 +138,7 @@ def find_minimum_frequency(wind_eqn, freq_eqn, bounds=(0.01, 2)):
 def get_minimum_frequency_arr(wind_eqns, Req, Rp, P):
     minimum_frequencys = []
     for wind_eqn in wind_eqns:
-        minimum_frequency = find_minimum_frequency(wind_eqn, frequency_wind_speed(Req, Rp, P))
+        minimum_frequency = find_minimum_frequency(wind_eqn, RHS(Req, Rp, P))
         minimum_frequencys.append(minimum_frequency)
     return np.array(minimum_frequencys)
 
@@ -373,6 +373,7 @@ def debug_print(verbose, msg=""):
     if verbose == True:
         print(msg)
 
+# 5.26.26 this function should be ok
 def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr, 
               Re, Rp, P, Re_err, Rp_err, P_err, 
               wind_eqn_strings, sector_data_string, root,
@@ -385,7 +386,7 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
     i = 0
     for wind_eqn, wind_eqn_err in zip(wind_eqns, wind_eqn_errs):
         model_eqn = U_PHI(wind_eqn)
-        net_sigma = sigma(wind_eqn, Re, Rp, P, wind_eqn_err, Re_err, Rp_err, P_err)
+        sigma_eqn = sigma(Re, Rp, P, Re_err, Rp_err, P_err, wind_eqn_err)
 
         # if the minumum frequency is extremely low, use the next lowest frequency that is above the threshold
         if (min_freq_arr[i] > min_freq_threshold):
@@ -411,7 +412,7 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
         print("Processing wind equation:", wind_eqn_strings[i])
         for f_obs, f_err in zip(means_filtered, stds_filtered):
             print("Frequency, error:", f_obs, f_err)
-            sampler = run_mcmc(f_obs, f_err, model_eqn, net_sigma, freq_eqn, n_steps=n_steps)
+            sampler = run_mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_steps=n_steps)
 
             samples = sampler.get_chain(discard=1000, flat=True)
             phi_samples = samples[:, 0]
