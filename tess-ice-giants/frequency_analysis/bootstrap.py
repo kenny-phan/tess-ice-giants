@@ -104,7 +104,7 @@ def bootstrap_peak_periods(time, flux, fap_level=0.01, n_bootstraps=1000, boot_p
     return np.concatenate(peak_periods)
 
 
-def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_cols=2):
+def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_cols=2, n_bootstraps=10000):
     X = peaks.reshape(-1, 1)
     db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
     labels = db.labels_
@@ -125,8 +125,11 @@ def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_co
         cluster_points = peaks[labels == label].flatten()
         count = len(cluster_points)
 
-        if count < len(peaks) / 100:
+        if count < n_bootstraps * 0.8:
             continue
+
+        # if count < len(peaks) / 100:
+        #     continue
 
         if plot:
             ax = axes[plot_idx]
@@ -185,9 +188,10 @@ def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detre
                  peak_periods=peak_periods)#, labels=labels, all_means=all_means, all_stds=all_stds)
         
 
-def save_cluster(periodograms, peak_periods_list, sector_data_strings, save_dir, plot=False, eps=0.0001, tolerance= 0.005, ncols=3):
+def save_cluster(periodograms, peak_periods_list, sector_data_strings, save_dir, 
+                 plot=False, eps=0.0001, tolerance= 0.005, ncols=3, n_bootstraps=10000):
     for i, peak_periods in enumerate(peak_periods_list):
-        _, all_means, all_stds = cluster_peaks(peak_periods, eps=eps, plot=plot, n_cols=ncols)
+        _, all_means, all_stds = cluster_peaks(peak_periods, eps=eps, plot=plot, n_cols=ncols, n_bootstraps=n_bootstraps)
         peak_periodogram_periods = np.array(1/periodograms[i]['peaks'])
         xmatch = np.abs(peak_periodogram_periods[:, np.newaxis] - np.array(all_means))
         potential_matches = np.abs(xmatch) < tolerance

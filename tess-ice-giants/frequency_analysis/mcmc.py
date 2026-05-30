@@ -392,7 +392,7 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
         if (min_freq_arr[i] > min_freq_threshold):
             min_freq = min_freq_arr[i] 
         else: 
-            min_freq = min_freq_arr[np.argmin(min_freq_arr[min_freq_arr > min_freq_threshold])]
+            min_freq = min_freq_arr[np.argmin(min_freq_arr[min_freq_arr < min_freq_threshold])]
 
         print(f"Using minimum frequency of {min_freq} for wind equation {wind_eqn_strings[i]}")
         period_limit = 1 / min_freq # maximum period in days
