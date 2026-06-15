@@ -1,7 +1,7 @@
 import numpy as np
 from astropy.timeseries import LombScargle
 
-from frequency_analysis.orbit_correction import linear_detrend
+from orbit_correction import linear_detrend
 
 def split(x, m):
     """Get indices of light curve cut off points"""
@@ -76,7 +76,7 @@ def weight_segments_by_time(time, segment_indices, flux_segments, keep_indices):
     time_half, flux_half = [], []
     time_per_segment = [(time[segment_indices[i][1] - 1] - time[segment_indices[i][0]]) for i in keep_indices]
     total_time = sum(time_per_segment)
-    print(time_per_segment)
+    # print(time_per_segment)
     half_ratio = [t / total_time for t in time_per_segment]
 
     for i in keep_indices:
@@ -130,15 +130,15 @@ def stack_segments_by_time(time_half, flux_half, half_ratio, total_segs=10):
         mask_nans = ~np.isnan(segment)
         segment = segment[mask_nans]
         time_length = (segment[-1] - segment[0]) / n
-        print(time_length)
+        # print(time_length)
 
         for j in range(n):
             start = np.argmin(np.abs(segment - segment[0] - j * time_length))
             end = np.argmin(np.abs(segment  - segment[0] - (j + 1) * time_length))
 
-            print(f"Segment {i + 1} part {j + 1}: {segment[start]} to {segment[end]}")
+            # print(f"Segment {i + 1} part {j + 1}: {segment[start]} to {segment[end]}")
             this_time, this_segment = time_half[i][start:end], flux_half[i][start:end]
-            print(this_time.shape, this_segment.shape)
+            # print(this_time.shape, this_segment.shape)
             time_stack.append(this_time)
             flux_stack.append(this_segment)
 
@@ -161,58 +161,149 @@ def split_lightcurve(time, flux, m, total_segs=10, by_time=True):
 
     return time_stack, flux_stack
 
-def split_periodogram(time_stack, flux_stack, min_freq, max_freq, bootstrap=False, n_bootstrap=1000, fap_level=0.01):
+from fullsector import get_peak_frequencies,debug_print
 
-    power_stack, fap_stack = [], []
+def split_periodogram(time_stack, flux_stack, 
+                      min_freq, max_freq, freq_array_size=1000,
+                      bootstrap=False, n_bootstrap=1000, 
+                      fap_level=0.01, 
+                      hwhm_threshold=0.01, freq_limit=None, verbose=False):
+
+    power_stack, fap_stack, peak_stack, std_stack = [], [], [], []
 
     for i in range(len(time_stack)):
-        frequency = np.linspace(min_freq, max_freq, 100)
+        frequency = np.linspace(min_freq, max_freq, freq_array_size)
         _, _, detrended = linear_detrend(time_stack[i], flux_stack[i])
         power = LombScargle(time_stack[i], detrended).power(frequency)
 
         if bootstrap:
-            fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level, method='bootstrap', method_kwds=dict(n_bootstraps=n_bootstrap))
+            fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level, 
+                                                                          method='bootstrap', 
+                                                                          method_kwds=dict(n_bootstraps=n_bootstrap))
         else: 
             fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level)
+
+        peaks, peak_pows = get_peak_frequencies(frequency, power, [fap])
+
+        if len(peaks) > 0:
+            # hwhm_arr = half_width_half_max(frequency, 
+            #                             power, 
+            #                             peaks, 
+            #                             peak_pows, 
+            #                             threshold=hwhm_threshold, 
+            #                             freq_limit=freq_limit,
+            #                             verbose=verbose)
+            
+            # sigma_f_arr = sigma_f_gregory(hwhm_arr, 
+            #                             flux_stack[i], 
+            #                             verbose=verbose)
+            
+            peak_stack.append(peaks)
+            # std_stack.append(sigma_f_arr)
+        
         power_stack.append(power)
         fap_stack.append(fap)
-
+        
     power_stack = np.array(power_stack)
     fap_stack = np.array(fap_stack)
+    
+    return frequency, power_stack, fap_stack, peak_stack #std_stack
 
-    return frequency, power_stack, fap_stack
+def split_data(times_list, flux_list, min_freq, max_freq, freq_array_size=500,
+               m=50, total_segs=10, by_time=True, 
+               bootstrap=False, hwhm_threshold=0.1, freq_limit=None,
+               verbose=False):
 
-def split_data(times_list, flux_list, min_freq, max_freq, m=50, total_segs=10, by_time=True, bootstrap=False):
-
-    all_times, all_flux, all_power, all_fap = [], [], [], []
+    all_times, all_flux, all_power, all_fap, all_peak, all_std = [], [], [], [], [], []
 
     for i in range(len(times_list)): 
-
+        debug_print(verbose, f"Processing dataset {i}")
         time_stack, flux_stack = split_lightcurve(times_list[i], flux_list[i], m, total_segs, by_time=by_time)
-        frequency, power_stack, fap_stack = split_periodogram(time_stack, flux_stack, min_freq, max_freq, bootstrap=bootstrap)
+        frequency, power_stack, fap_stack, peak_stack, std_stack = split_periodogram(time_stack, flux_stack, 
+                                                                                     min_freq, max_freq, 
+                                                                                     freq_array_size=freq_array_size,
+                                                                                     bootstrap=bootstrap, 
+                                                                                     hwhm_threshold=hwhm_threshold,
+                                                                                     freq_limit=freq_limit,
+                                                                                     verbose=verbose)
 
         all_times.append(time_stack)
         all_flux.append(flux_stack)
         all_power.append(power_stack)
         all_fap.append(fap_stack)
+        all_peak.append(peak_stack)
+        all_std.append(std_stack)
         frequency = frequency
         
-    return all_times, all_flux, frequency, all_power, all_fap
+    return all_times, all_flux, frequency, all_power, all_fap, all_peak, all_std
 
+def get_bin_edges(time_stack, btjd_offset=2400, round_decimals=1):
+    bin_edges = []
+    for time in time_stack:
+        # Use the first and last time of each bin
+        bin_edges.append((np.round(time[0] - 2457000 - btjd_offset, round_decimals),
+                          np.round(time[-1] - 2457000 - btjd_offset, round_decimals)))
+        
+    bin_starts = [edge[0] for edge in bin_edges]
+    bin_ends = [edge[1] for edge in bin_edges]
+    return bin_starts, bin_ends
 
-# def split_data(file_list, target_id, observer_id, min_freq, max_freq, crop_list=[], m=50, total_segs=10):
+def insert_gap_bin(bin_starts, bin_ends, gap_factor=3):
+    """
+    Insert a dummy bin into the bin edges if there's a large gap.
+    
+    Parameters
+    ----------
+    bin_starts, bin_ends : list
+        Start and end times of bins.
+    gap_factor : float
+        Factor above median gap size to qualify as 'large'.
+    
+    Returns
+    -------
+    new_starts, new_ends : list
+        Modified bin edges including a gap bin.
+    gap_index : int or None
+        Index where gap was inserted, None if no gap.
+    """
+    gaps = [bin_starts[i+1] - bin_ends[i] for i in range(len(bin_starts)-1)]
+    if len(gaps) == 0:
+        return bin_starts, bin_ends, None
+    
+    median_gap = np.median(gaps)
+    large_gap_idx = np.argmax(gaps)  # largest gap
+    if gaps[large_gap_idx] > gap_factor * median_gap:
+        # Place dummy bin at midpoint of large gap
+        midpoint = (bin_ends[large_gap_idx]) 
+        new_starts = bin_starts[:large_gap_idx+1] + [midpoint] + bin_starts[large_gap_idx+1:]
+        new_ends   = bin_ends[:large_gap_idx+1]   + [midpoint] + bin_ends[large_gap_idx+1:]
+        return new_starts, new_ends, large_gap_idx+1
+    else:
+        return bin_starts, bin_ends, None
 
-#     all_times, all_flux, all_power = [], [], []
+def expand_by_time_ranges(new_power, time_ranges, scale=10):
+    """
+    Expand each time bin in new_power horizontally proportional to its time span.
 
-#     for i, data_file in enumerate(file_list): 
+    Parameters
+    ----------
+    new_power : 2D array, shape (N_bins, N_periods)
+        Power values per time bin.
+    time_ranges : 1D array, shape (N_bins,)
+        Duration (or relative width) of each bin.
+    scale : float
+        Controls total width of output array; higher = finer scaling.
 
-#         time, _, corrected_lightcurve = run_orbit_correction(target_id, observer_id, data_file, crop_list[i])
+    Returns
+    -------
+    expanded_power : 2D array
+        Time-stretched array suitable for plt.imshow().
+    """
+    # Normalize to mean width = 1, then scale up for better resolution
+    norm = np.mean(time_ranges)
+    n_cols = np.round((time_ranges / norm) * scale).astype(int)
+    n_cols[n_cols < 1] = 1  # ensure at least one column per bin
 
-#         time_stack, flux_stack = split_lightcurve(time, corrected_lightcurve, total_segs, m=m)
-#         frequency, power_stack = split_periodogram(time_stack, flux_stack, min_freq, max_freq)
-
-#         all_times.append(time_stack)
-#         all_flux.append(flux_stack)
-#         all_power.append(power_stack)
-
-#     return all_times, all_flux, frequency, all_power
+    stretched_rows = [np.repeat(row[np.newaxis, :], n, axis=0) for row, n in zip(new_power, n_cols)]
+    expanded_power = np.vstack(stretched_rows)
+    return expanded_power.T, stretched_rows  # transpose so shape = (N_periods, total_time_pixels)

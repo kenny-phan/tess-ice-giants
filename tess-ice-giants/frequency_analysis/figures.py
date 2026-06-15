@@ -12,6 +12,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from astropy.io import fits
 
 from wind_equations import *
+from fullsector import get_peak_frequencies
+from subsectors import get_bin_edges, insert_gap_bin, expand_by_time_ranges
 
 mpl.rcParams['mathtext.fontset'] = 'cm'          # Computer Modern serif
 mpl.rcParams['mathtext.rm'] = 'serif'
@@ -30,6 +32,7 @@ plt.rcParams.update({'axes.linewidth' : 1.5,
                      'font.family': 'Serif'
                     })
 plt.style.use('tableau-colorblind10')
+tableau_cb10 = plt.rcParams['axes.prop_cycle'].by_key()['color'] 
 
 plot_colors_rgb = [
     (0/255, 107/255, 164/255),   # 006BA4
@@ -80,7 +83,11 @@ def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10,
     axs.legend(fontsize=12, loc="upper left")
     axs.grid(True)
 
-def plot_lightcurve_and_periodogram(planet, lc_list, periodogram_list, sector_list, root=None):
+def plot_lightcurve_and_periodogram(planet, 
+                                    lc_list, 
+                                    periodogram_list, 
+                                    sector_list, 
+                                    flux_string='raw', root=None):
 
     # Create the figure
     fig = plt.figure(figsize=(20, 12))        
@@ -119,7 +126,7 @@ def plot_lightcurve_and_periodogram(planet, lc_list, periodogram_list, sector_li
         scatter_data(axs[i], planet, 
                         sector_list[i], 
                         lc['time'], 
-                        lc['orbit_corrected'], 
+                        lc[flux_string], 
                         color=color)
 
     for i, periodogram in enumerate(periodogram_list):
@@ -407,3 +414,233 @@ def plot_summed_mosaics(summed_data, eqns, lats, stds, plot_colors,
         plt.show()
 
     # return bright_points
+
+## subsector plots
+
+def plot_split_lightcurves(axs, time_stack, flux_stack, title):
+    axs.set_title(title)
+
+    for i in range(len(time_stack)):
+        axs.plot(time_stack[i] - 2457000, flux_stack[i], label=f"Subseg. {i + 1}")
+    axs.grid()
+
+    formatter = ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((0, 0))  # Forces scientific notation for small/large numbers
+    axs.set_xlabel("Days [BTJD]")
+
+    axs.grid(True)
+    axs.yaxis.set_major_formatter(formatter)
+    axs.xaxis.set_minor_locator(AutoMinorLocator())
+    axs.figure.canvas.draw()
+
+
+def plot_split_periodograms(axs, frequency, power_stack, fap_stack):
+    # axs.set_title(title)
+
+    for i in range(len(power_stack)):
+        axs.plot(24/frequency, power_stack[i], linewidth=2, label=f"Bin {i + 1}")
+        axs.axhline(fap_stack[i], color=tableau_cb10[i], linestyle='--')
+    axs.grid()
+
+    formatter = ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((0, 0))  # Forces scientific notation for small/large numbers
+
+    axs.grid(True)
+    #axs.yaxis.set_major_formatter(formatter)
+    axs.xaxis.set_minor_locator(AutoMinorLocator())
+    axs.figure.canvas.draw()
+    axs.set_xlim(8, 24)
+    axs.set_xlabel("Period [hours]")
+
+
+def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack,
+                 btjd_offset=2400, round_decimals=1,
+                 gap_factor=3, vmin=0, vmax=1, output_table=False):
+
+    period_limit = 1/max_frequency   # in hours
+
+    bin_starts, bin_ends = get_bin_edges(time_stack,
+                                         btjd_offset=btjd_offset,
+                                         round_decimals=round_decimals)
+    
+    # Insert a dummy bin if there's a large data gap
+    bin_starts, bin_ends, gap_idx = insert_gap_bin(bin_starts, bin_ends,
+                                                   gap_factor=gap_factor)
+
+    bin_starts = bin_starts + [bin_ends[-1]]
+
+    new_power = []
+    time_ranges = []
+    tot_time = 0
+
+    peak_freqs, periods = [], []
+    for i, time in enumerate(time_stack):
+        time = time - 2457000
+        start_time = np.round(time[0], decimals=round_decimals + 1)
+        end_time = np.round(time[-1], decimals=round_decimals + 1)
+        range_time = np.round(time[-1] - time[0], decimals=round_decimals + 1)
+        tot_time += range_time
+        peak_frequencies, power_vals = get_peak_frequencies(frequency, power[i], np.full_like(frequency, 0))
+        mask = peak_frequencies > max_frequency
+        peaks_below_limit, power_below_limit = peak_frequencies[mask], power_vals[mask]
+
+        if len(peaks_below_limit) == 0:
+            continue
+        
+        peak_freqs.append(peaks_below_limit[np.argmax(power_below_limit)])
+        period = 24 / peaks_below_limit[np.argmax(power_below_limit)]
+        periods.append(period)
+        output_period = np.round(period, decimals=2)
+
+        if output_table:
+            if (np.max(power_below_limit) < fap_stack[i]) or (period > period_limit):
+                print(f" & No Peak & {start_time} - {end_time} & {range_time} \\\\")
+            else:
+                print(f" & {output_period} & {start_time} - {end_time} & {range_time} \\\\")
+
+        period_power = np.interp(np.linspace(8, 24, 100), np.flip(24/frequency), np.flip(np.array(power[i], dtype=float)))
+        new_power.append(period_power)
+        time_ranges.append(range_time)
+
+    print(f"TOTAL BIN TIME: {tot_time}")
+    new_power = np.array(new_power)
+    time_ranges = np.array(time_ranges)
+
+    if gap_idx is not None:
+        # time_ranges = np.insert(time_ranges, gap_idx, 2)
+        # bin_starts = np.insert(bin_starts, gap_idx, bin_starts[gap_idx - 1])
+
+        dummy_row = np.full_like(new_power[0], np.nan)  # NaN instead of value
+        new_power = np.insert(new_power, gap_idx, dummy_row, axis=0)
+
+    new_power, stretched_rows = expand_by_time_ranges(new_power, time_ranges, scale=20)
+
+    expanded_bin_starts = [bin_starts[0]]
+    for i in range(len(stretched_rows)):
+        next_time = expanded_bin_starts[-1] + time_ranges[i]
+        expanded_bin_starts.append(next_time)
+    expanded_bin_starts = np.array(expanded_bin_starts)
+
+    # Create colormap that shows NaN as white
+    cmap = plt.cm.coolwarm.copy()
+    cmap.set_bad(color="white")
+
+    axs.imshow(new_power, interpolation='nearest', aspect='auto',
+                    origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+
+    axs.set_yticks(np.linspace(0, 99, 5), [8, 12, 16, 20, 24])
+    x_ticks = np.cumsum([0] + [s.shape[0] for s in stretched_rows])
+    x_labels = [f"{t:.1f}" for t in expanded_bin_starts]
+
+    print(x_ticks)
+    
+    axs.set_xlabel(f"Days [BTJD - {btjd_offset}]")
+    # axs.set_title(title)
+    axs.set_xticks(x_ticks)
+    axs.set_xticklabels(x_labels, rotation=45, ha='right')
+
+    # Add "Data gap" label
+    if gap_idx is not None:
+        axs.text(x_ticks[gap_idx] + 10, 50, "data gap", ha="center", va="center",
+                 rotation=90, fontsize=18, color="black",
+                 bbox=dict(facecolor="white", edgecolor="none", alpha=0.8))
+
+    return np.array(peak_freqs), np.array(periods), np.array(new_power), np.array(time_ranges), stretched_rows, expanded_bin_starts
+
+def plot_subsector_heatmap(planet, subtimes, subfluxes, subfreqs, subpower, subfap, labels, max_freq, offset):
+
+    fig = plt.figure(figsize=(20, 18))
+    gs = fig.add_gridspec(nrows=3, ncols=7, height_ratios=[1, 1, 1], width_ratios=[1, 1, 1, 1, 1, 1, 0.1], wspace=0.3)
+
+    if planet == "Neptune":
+
+        # light curves
+        ax1 = fig.add_subplot(gs[0, 0:3])
+        ax2 = fig.add_subplot(gs[0, 3:6])
+        ax1.set_ylabel(r"Flux [e$^{-}$s$^{-1}$]")
+        lc_axs = [ax1, ax2]
+
+        # periodograms
+        ax3 = fig.add_subplot(gs[1, 0:3])
+        ax4 = fig.add_subplot(gs[1, 3:6])
+        ax3.set_ylabel("Power")
+        pg_axs = [ax3, ax4]
+
+        # heat maps
+        ax5 = fig.add_subplot(gs[2, 0:3])
+        ax5.set_ylabel("Period [hours]")
+        ax6 = fig.add_subplot(gs[2, 3:6])
+
+        hm_axs = [ax5, ax6]
+
+        # colorbar
+        ax7=fig.add_subplot(gs[2,6])
+        ax7.set_ylabel("Power")
+        #remove xaxis ticks
+        ax7.set_xticks([])
+
+        cbar_ax = ax7
+    
+    elif planet == "Uranus":
+        # light curves
+        ax1 = fig.add_subplot(gs[0, 0:2])
+        ax1.set_ylabel(r"Flux [e$^{-}$s$^{-1}$]")
+        ax2 = fig.add_subplot(gs[0, 2:4])
+        ax3 = fig.add_subplot(gs[0, 4:6])
+
+        lc_axs = [ax1, ax2, ax3]
+
+        # periodograms
+        ax4 = fig.add_subplot(gs[1, 0:2])
+        ax4.set_ylabel("Power")
+        ax5 = fig.add_subplot(gs[1, 2:4])
+        ax6 = fig.add_subplot(gs[1, 4:6])
+
+        pg_axs = [ax4, ax5, ax6]
+
+        # heatmaps
+        ax7 = fig.add_subplot(gs[2, 0:2])
+        ax7.set_ylabel("Period [hours]")
+        ax8 = fig.add_subplot(gs[2, 2:4])
+        ax9 = fig.add_subplot(gs[2, 4:6])
+
+        hm_axs = [ax7, ax8, ax9]
+        
+        # colorbar
+        ax10=fig.add_subplot(gs[2,6])
+        ax10.set_ylabel("Power")
+        #remove xaxis ticks
+        ax10.set_xticks([])
+
+        cbar_ax = ax10
+
+    for j, ax in enumerate(lc_axs):
+        plot_split_lightcurves(ax, subtimes[j], subfluxes[j], labels[j])
+    ax1.legend(fontsize=10, ncol=2)
+
+    for j, ax in enumerate(pg_axs):
+        plot_split_periodograms(ax, subfreqs[j], subpower[j], subfap[j])
+    # heatmaps
+
+    period_powers = []
+    for j in range(len(hm_axs)):
+        for i in range(len(subtimes[j])):
+            pp = np.interp(np.linspace(8, 24, 100), 
+                           np.flip(np.asarray(24/subfreqs[j], dtype=float)), 
+                           np.flip(np.asarray(subpower[j][i], dtype=float)))
+            period_powers.append(pp)
+
+    all_period_powers = np.array(period_powers)
+    vmin = all_period_powers.min()
+    vmax = all_period_powers.max()
+
+    for j, ax in enumerate(hm_axs):
+        plot_heatmap(ax, subtimes[j], subfreqs[j], max_freq, subpower[j], subfap[j], btjd_offset=offset[j], vmin=vmin, vmax=vmax)
+
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    cb1 = mpl.colorbar.ColorbarBase(cbar_ax, cmap="coolwarm", norm=norm)
+
+    plt.tight_layout()
+    plt.show()

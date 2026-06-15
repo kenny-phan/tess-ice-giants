@@ -24,19 +24,33 @@ def correct_lightcurve(raw_flux, delta):
 
     return np.multiply(raw_flux, correction_array)
 
+def crop(times, raw_flux, crop_range):
+    if len(crop_range) != 2:
+        
+        return times, raw_flux, None, None, None
+    
+    mask = (times >= times[crop_range[0]]) & (times <= times[crop_range[1]])
+    times = times[~mask]
+    raw_flux = raw_flux[~mask]
+
+    start_date = Time(times[0], format='jd').iso
+    end_date   = Time(times[-1], format='jd').iso
+    step       = str(len(times) - 1) 
+
+    return times, raw_flux, start_date, end_date, step
+
+def crop_all(data_file, crop_range):
+    times, raw_flux, _, _, _ = get_lightcurve_info(data_file)
+    times, raw_flux, _, _, _ = crop(times, raw_flux, crop_range)
+    return times, raw_flux
+
 def run_orbit_correction(target_id, observer_id, flux_data_file, crop_range=None):
     print("Parsing Light Curve")
     times, raw_flux, start_date, end_date, step = get_lightcurve_info(flux_data_file)
 
     if crop_range:
-        mask = (times >= times[crop_range[0]]) & (times <= times[crop_range[1]])
-        times = times[~mask]
-        raw_flux = raw_flux[~mask]
+        times, raw_flux, start_date, end_date, step = crop(times, raw_flux, crop_range)
 
-        start_date = Time(times[0], format='jd').iso
-        end_date   = Time(times[-1], format='jd').iso
-        step       = str(len(times) - 1) 
-        
     print("Getting ephemeris")
     delta = get_delta(target_id, start_date, end_date, step, observer_id)
 
@@ -61,13 +75,22 @@ def detrend_all(target_id, observer_id, data_file, crop_range=None):
 
     return time, raw, orbit_corrected, detrended
 
-def correct_and_save_light_curves(target_id_arr, observer_id_arr, data_file_arr, save_dir, name_arr, crop_range_arr=None):
+def correct_and_save_light_curves(target_id_arr, observer_id_arr, 
+                                  data_file_arr, save_dir, 
+                                  name_arr, crop_range_arr=None,
+                                  correct=False):
 
     for i, data_file in enumerate(data_file_arr):
-        time, raw, orbit_corrected, detrended = detrend_all(target_id_arr[i], observer_id_arr[i], data_file, 
+        if correct:
+            time, raw, orbit_corrected, detrended = detrend_all(target_id_arr[i], observer_id_arr[i], data_file, 
                                                             crop_range=crop_range_arr[i] if crop_range_arr else None)
-        np.savez(save_dir + f"{name_arr[i]}.npz", time=time, raw=raw, orbit_corrected=orbit_corrected, detrended=detrended)
+            np.savez(save_dir + f"{name_arr[i]}.npz", time=time, raw=raw, orbit_corrected=orbit_corrected, detrended=detrended)
 
+        else:
+            time, raw_flux = crop_all(data_file, crop_range=crop_range_arr[i] if crop_range_arr else None)
+            detrended = linear_detrend(time, raw_flux)[2]
+            
+            np.savez(save_dir + f"{name_arr[i]}.npz", time=time, orbit_corrected=raw_flux, detrended=detrended)
 # #duplicate funtions for K2 data, as I am lazy 
 # def get_lightcurve_info_k2(flux_data_file):
 

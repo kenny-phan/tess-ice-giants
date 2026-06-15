@@ -1,6 +1,45 @@
 import numpy as np
 from scipy.special import eval_legendre
 from scipy.interpolate import interp1d
+from scipy.optimize import minimize_scalar
+
+# functions to determine the lower frequency bound of latitude solutions
+# Residual
+def residual(phi, f, wind_eqn, freq_eqn):
+    return freq_eqn(phi, f) - wind_eqn(phi)
+
+# Check if for a given f, residual = 0 has any solution in in phi between range
+def has_root(f, wind_eqn, freq_eqn, phi_range=(-np.pi/2, np.pi/2), num_points=1000):
+    phi_vals = np.linspace(phi_range[0], phi_range[1], num_points)
+    res_vals = residual(phi_vals, f, wind_eqn, freq_eqn)
+    
+    # Check for a sign change (indicates root crossing)
+    return np.any(np.diff(np.sign(res_vals)))
+
+# Objective function: return 0 if root exists, else large penalty
+def objective(f, wind_eqn, freq_eqn):
+    return f if has_root(f, wind_eqn, freq_eqn) else np.inf
+
+# Use scalar minimization (bounded search)
+def find_minimum_frequency(wind_eqn, freq_eqn, bounds=(0.01, 2)):
+    result = minimize_scalar(
+        lambda f: objective(f, wind_eqn, freq_eqn),
+        bounds=bounds,
+        method='bounded'
+    )
+    if result.success and np.isfinite(result.fun):
+        print(f"Minimum f with at least one intersection: {result.x:.6f}")
+    else:
+        print("No intersection found in the given f range.")
+
+    return result.x
+
+def get_minimum_frequency_arr(wind_eqns, Req, Rp, P):
+    minimum_frequencys = []
+    for wind_eqn in wind_eqns:
+        minimum_frequency = find_minimum_frequency(wind_eqn, RHS(Req, Rp, P))
+        minimum_frequencys.append(minimum_frequency)
+    return np.array(minimum_frequencys)
 
 def radius_phi(R_eq, R_p):
         
@@ -283,7 +322,7 @@ def dU_dfr(Re, Rp):
     
     return equation
 
-def sigma_U(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P):
+def sigma_U(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P, reperr=None):
     fr = 24/P
     sigma_fr = 24*sigma_P / P**2
     du_dre = dU_dRphi(Re, Rp, dR_dRe, fr)
@@ -291,21 +330,49 @@ def sigma_U(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P):
     du_df = dU_df(Re, Rp)
     du_dfr = dU_dfr(Re, Rp)
 
-    def equation(phi, f, sigma_f):
-        Re_contribution = (du_dre(phi, f) * sigma_Re)**2
-        Rp_contribution = (du_drp(phi, f) * sigma_Rp)**2
-        f_contribution = (du_df(phi) * sigma_f)**2
-        fr_contribution = (du_dfr(phi) * sigma_fr)**2
-        combined_contribution = np.array(Re_contribution, dtype=float) + np.array(Rp_contribution, dtype=float) + np.array(f_contribution, dtype=float) + np.array(fr_contribution, dtype=float)
-        return np.sqrt(combined_contribution)
-
+    if reperr is None:
+        def equation(phi, f, sigma_f):
+            Re_contribution = (du_dre(phi, f) * sigma_Re)**2
+            Rp_contribution = (du_drp(phi, f) * sigma_Rp)**2
+            f_contribution = (du_df(phi) * sigma_f)**2
+            fr_contribution = (du_dfr(phi) * sigma_fr)**2
+            combined_contribution = (np.array(Re_contribution, dtype=float) + 
+                                     np.array(Rp_contribution, dtype=float) + 
+                                     np.array(f_contribution, dtype=float) + 
+                                     np.array(fr_contribution, dtype=float))
+            return np.sqrt(combined_contribution)
+    else:
+        C = 4.8481e-3 
+        def equation(phi, f, sigma_f):
+            Re_contribution = (du_dre(phi, f) * sigma_Re)**2
+            Rp_contribution = (du_drp(phi, f) * sigma_Rp)**2
+            f_contribution = (du_df(phi) * sigma_f)**2
+            fr_contribution = (du_dfr(phi) * sigma_fr)**2
+            reperr_contribution = (2*np.pi*C*reperr*radius_phi(Re, Rp)(phi) / 86400)**2
+            combined_contribution = (np.array(Re_contribution, dtype=float) + 
+                                     np.array(Rp_contribution, dtype=float) + 
+                                     np.array(f_contribution, dtype=float) + 
+                                     np.array(fr_contribution, dtype=float) + 
+                                     np.array(reperr_contribution, dtype=float))
+            return np.sqrt(combined_contribution)
     return equation
 
-def sigma(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P, sigma_m_eqn):  
+def sigma_uranus_model(wind_eqn):
+    constant = 4.8481e-3
+    Re = 25559
+    Rp = 24973
+    sigma_Re = 4
+    sigma_Rp = 20
 
-    sigma_u = sigma_U(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P)
+    def equation(phi):
+        return constant * wind_eqn(phi) * sigma_R(Re, Rp, sigma_Re, sigma_Rp)(phi) / radius_phi(Re, Rp)(phi)
+    return equation
+
+def sigma(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P, sigma_m_eqn, reperr=None):  
+
+    sigma_u = sigma_U(Re, Rp, P, sigma_Re, sigma_Rp, sigma_P, reperr=reperr)
     sigma_m = sigma_m_eqn
-
+    
     def equation(phi, f, sigma_f):
         return np.sqrt(sigma_u(phi, f, sigma_f)**2 + sigma_m(phi)**2)
     return equation
@@ -362,53 +429,4 @@ def sigma_sromovsky2015_N(phi):
 def sigma_sromovsky2015_S(phi):
     return sigma_sromovsky2015_N(-phi)
 
-# OLD ERROR PROPAGATION
-# these also have to be equations.. i think.. where model_eqn and model_eqn_err are functions of phi
-# vc stands for variance contribution
-# def vc_u(R, P, model_eqn_err): # wind eqn vc
-#     fr = 24/P
 
-#     def equation(phi, f):
-#         return (model_eqn_err(phi) / (R(phi) * (f - fr)))**2
-
-#     return equation
-
-# def vc_R(model_eqn, R, P, R_err):
-#     fr = 24/P
-
-#     def equation(phi, f):
-#         return (R_err(phi) * model_eqn(phi) / (R(phi)*R(phi)*(f - fr)))**2
-    
-#     return equation
-
-# def vc_f(model_eqn, R, P): # f_err is NOT constant! one f_err for each f!
-#     fr = 24/P
-
-#     def equation(phi, f, f_err):
-#         return (f_err * model_eqn(phi) / (R(phi) * (f - fr)**2))**2
-    
-#     return equation
-
-# def vc_fr(model_eqn, R, P, P_err): # f_err is NOT constant! one f_err for each f!
-#     fr = 24/P
-#     fr_err = P_err / P**2 #error propagate for P -> fr
-
-#     def equation(phi, f):
-#         return (fr_err * model_eqn(phi) / (R(phi) * (f - fr)**2))**2
-    
-#     return equation
-
-# def sigma(model_eqn, Re, Rp, P, model_eqn_err, Re_err, Rp_err, P_err): # outputs sigma as a function of phi, f, and f_err
-    
-#     R = radius_phi(Re, Rp)
-#     R_err = sigma_Rphi(Re=Re, Rp=Rp, sigma_Re=Re_err, sigma_Rp=Rp_err) # R_err is a function of phi
-
-#     def equation(phi, f, f_err):
-#         vc_uu = vc_u(R, P, model_eqn_err)
-#         vc_RR = vc_R(model_eqn, R, P, R_err)
-#         vc_ff = vc_f(model_eqn, R, P)
-#         vc_frfr = vc_fr(model_eqn, R, P, P_err)
-
-#         return np.sqrt(vc_uu(phi, f) + vc_RR(phi, f) + vc_ff(phi, f, f_err) + vc_frfr(phi, f))
-        
-#     return equation

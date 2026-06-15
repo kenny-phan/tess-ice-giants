@@ -64,7 +64,7 @@ def fit_gaussian(phi_deg_array, n_components=None, plot=False):
     return latitudes, standard_devs
 
 
-def bootstrap_peak_periods(time, flux, fap_level=0.01, n_bootstraps=1000, boot_percent=0.7, 
+def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percent=0.7, 
                            min_period=5, max_period=20, n_freqs=10000, plot=False, n_plot=100): 
     """Bootstrap the peak periods from the Lomb-Scargle periodogram of the lightcurve.""" 
     peak_periods = [] 
@@ -115,11 +115,10 @@ def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_co
 
     all_means, all_stds = [], []
 
-    if plot: 
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
-        axes = axes.flatten()  
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
+    axes = axes.flatten()  
 
-        plot_idx = 0
+    plot_idx = 0
 
     for _, label in enumerate(unique_labels):
         cluster_points = peaks[labels == label].flatten()
@@ -128,12 +127,10 @@ def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_co
         if count < n_bootstraps * 0.8:
             continue
 
-        # if count < len(peaks) / 100:
-        #     continue
-
-        if plot:
-            ax = axes[plot_idx]
-            counts, bins, _ = ax.hist(cluster_points, bins='auto', color='lightsteelblue', edgecolor='k')
+        ax = axes[plot_idx]
+        counts, bins, _ = ax.hist(cluster_points, bins='auto', color='lightsteelblue', edgecolor='k')
+        if plot is False:
+            plt.close()  # closes the figure without displaying
 
         if gaussian:
             if len(cluster_points) < 2:
@@ -180,7 +177,7 @@ def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detre
                    n_freqs=int(1e5), n_bootstraps=10000, plot=True):
     
     for i, sector_data in enumerate(sector_data_list):
-        peak_periods = bootstrap_peak_periods(sector_data['time'], sector_data[flux_type], fap_level=fap_level, 
+        peak_periods = bootstrap_peak_periods(sector_data['time'], sector_data[flux_type], fap_level, 
                                                 min_period=min_period, max_period=max_period, n_freqs=n_freqs, 
                                                 n_bootstraps=n_bootstraps, plot=plot)
         # labels, all_means, all_stds = cluster_peaks(peak_periods, eps=0.0001, plot=True, n_cols=3)
