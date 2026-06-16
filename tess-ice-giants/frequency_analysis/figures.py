@@ -61,7 +61,7 @@ def scatter_data(axs, name, sector, x, y, color):
     axs.xaxis.set_minor_locator(AutoMinorLocator())
     axs.figure.canvas.draw()
 
-def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10, 1, 0.01], round_decimals=1):
+def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10, 1, 0.01], xlim=[8, 24], legend_loc="upper left"):
 
     axs.plot(24 / frequency, power, color=color, linewidth=2)
     for i, fap in enumerate(np.flip(fap_stack)):
@@ -77,10 +77,10 @@ def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10,
     axs.set_xlabel("Period [hours]")
 
 
-    axs.set_xlim(8, 24)
+    axs.set_xlim(xlim[0], xlim[1])
     axs.set_ylim(0, None)
     # axs.set_title(title)
-    axs.legend(fontsize=12, loc="upper left")
+    axs.legend(fontsize=12, loc=legend_loc)
     axs.grid(True)
 
 def plot_lightcurve_and_periodogram(planet, 

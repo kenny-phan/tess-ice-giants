@@ -42,6 +42,9 @@ def debug_print(verbose, *args):
 #     debug_print(verbose, "std", std)
 #     return std
 
+def nyquist_from_cadence(cadences):
+    return 1 / (2 * cadences)
+
 def make_periodogram(time, flux, 
                      minimum_frequency=1, 
                      maximum_frequency=3, 
@@ -75,19 +78,19 @@ def get_peak_frequencies(frequency, power, false_alarm_array):
 
 
 def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='detrended', 
-                      minimum_frequency=1, maximum_frequency=3,
+                      min_freq_arr=[], max_freq_arr=[],
                       samples_per_peak=10):
     
     for i, sector_data in tqdm(enumerate(sector_data_list)):
         frequency, power, false_alarm_levels = make_periodogram(sector_data['time'], sector_data[flux_type],
-                                                                minimum_frequency=minimum_frequency, 
-                                                                maximum_frequency=maximum_frequency,
+                                                                minimum_frequency=min_freq_arr[i], 
+                                                                maximum_frequency=max_freq_arr[i],
                                                                 samples_per_peak=samples_per_peak)
-        peaks, peak_pows = get_peak_frequencies(frequency, power, false_alarm_levels[0])
+        peak_freqs, peak_pows = get_peak_frequencies(frequency, power, false_alarm_levels[0])
         # print(false_alarm_levels)
         np.savez(root + f'{sector_data_strings[i]}_periodogram.npz', 
                 frequency=frequency, power=power, false_alarm_levels=false_alarm_levels,
-                peaks=peaks, peak_pows=peak_pows)    
+                peak_freqs=peak_freqs, peak_pows=peak_pows)    
     
 def group_and_average(arr1, arr2, mean=True):
     """
