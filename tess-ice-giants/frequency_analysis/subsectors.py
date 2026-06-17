@@ -164,14 +164,15 @@ def split_lightcurve(time, flux, m, total_segs=10, by_time=True):
 from fullsector import get_peak_frequencies,debug_print
 
 def split_periodogram(time_stack, flux_stack, 
-                      min_freq, max_freq, freq_array_size=1000,
+                      max_freq, freq_array_size=1000,
                       bootstrap=False, n_bootstrap=1000, 
-                      fap_level=0.01, 
-                      hwhm_threshold=0.01, freq_limit=None, verbose=False):
+                      fap_level=0.01):
 
-    power_stack, fap_stack, peak_stack, std_stack = [], [], [], []
+    power_stack, fap_stack, peak_stack = [], [], []
 
     for i in range(len(time_stack)):
+        baseline = time_stack[i][-1] - time_stack[i][0]
+        min_freq = 1/(baseline/2)
         frequency = np.linspace(min_freq, max_freq, freq_array_size)
         _, _, detrended = linear_detrend(time_stack[i], flux_stack[i])
         power = LombScargle(time_stack[i], detrended).power(frequency)
@@ -209,33 +210,28 @@ def split_periodogram(time_stack, flux_stack,
     
     return frequency, power_stack, fap_stack, peak_stack #std_stack
 
-def split_data(times_list, flux_list, min_freq, max_freq, freq_array_size=500,
+def split_data(times_list, flux_list, max_freq_arr, freq_array_size=500,
                m=50, total_segs=10, by_time=True, 
-               bootstrap=False, hwhm_threshold=0.1, freq_limit=None,
+               bootstrap=False, 
                verbose=False):
 
-    all_times, all_flux, all_power, all_fap, all_peak, all_std = [], [], [], [], [], []
+    all_times, all_flux, all_power, all_fap, all_peak = [], [], [], [], []
 
     for i in range(len(times_list)): 
         debug_print(verbose, f"Processing dataset {i}")
         time_stack, flux_stack = split_lightcurve(times_list[i], flux_list[i], m, total_segs, by_time=by_time)
-        frequency, power_stack, fap_stack, peak_stack, std_stack = split_periodogram(time_stack, flux_stack, 
-                                                                                     min_freq, max_freq, 
+        frequency, power_stack, fap_stack, peak_stack = split_periodogram(time_stack, flux_stack, max_freq_arr[i], 
                                                                                      freq_array_size=freq_array_size,
-                                                                                     bootstrap=bootstrap, 
-                                                                                     hwhm_threshold=hwhm_threshold,
-                                                                                     freq_limit=freq_limit,
-                                                                                     verbose=verbose)
+                                                                                     bootstrap=bootstrap)
 
         all_times.append(time_stack)
         all_flux.append(flux_stack)
         all_power.append(power_stack)
         all_fap.append(fap_stack)
         all_peak.append(peak_stack)
-        all_std.append(std_stack)
         frequency = frequency
         
-    return all_times, all_flux, frequency, all_power, all_fap, all_peak, all_std
+    return all_times, all_flux, frequency, all_power, all_fap, all_peak
 
 def get_bin_edges(time_stack, btjd_offset=2400, round_decimals=1):
     bin_edges = []

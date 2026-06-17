@@ -173,12 +173,13 @@ def cluster_peaks(peaks, eps=0.1, min_samples=5, gaussian=True, plot=False, n_co
 
     return labels, all_means, all_stds
 
-def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_level=0.1, min_period=0.1, max_period=1,
+def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_level=0.1, min_period_arr=[], max_period_arr=[],
                    n_freqs=int(1e5), n_bootstraps=10000, plot=True):
     
     for i, sector_data in enumerate(sector_data_list):
+
         peak_periods = bootstrap_peak_periods(sector_data['time'], sector_data[flux_type], fap_level, 
-                                                min_period=min_period, max_period=max_period, n_freqs=n_freqs, 
+                                                min_period=min_period_arr[i], max_period=max_period_arr[i], n_freqs=n_freqs, 
                                                 n_bootstraps=n_bootstraps, plot=plot)
         # labels, all_means, all_stds = cluster_peaks(peak_periods, eps=0.0001, plot=True, n_cols=3)
         np.savez(root + f'{sector_data_strings[i]}_bootstrap.npz', 
