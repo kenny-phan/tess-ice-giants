@@ -50,7 +50,7 @@ def make_periodogram(time, flux,
                      maximum_frequency=3, 
                      samples_per_peak=10, 
                      probabilities=[10, 1, 0.01], 
-                     n_bootstrap=1000, verbose=False):
+                     n_bootstrap=1000):
     ls = LombScargle(time, flux)
 
     frequency, power = ls.autopower(minimum_frequency=minimum_frequency, 
@@ -77,7 +77,7 @@ def get_peak_frequencies(frequency, power, false_alarm_array):
     return frequency[peaks], power[peaks]
 
 
-def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='detrended', 
+def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_idx=0,
                       min_freq_arr=[], max_freq_arr=[],
                       samples_per_peak=10):
     
@@ -86,7 +86,7 @@ def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='de
                                                                 minimum_frequency=min_freq_arr[i], 
                                                                 maximum_frequency=max_freq_arr[i],
                                                                 samples_per_peak=samples_per_peak)
-        peak_freqs, peak_pows = get_peak_frequencies(frequency, power, false_alarm_levels[0])
+        peak_freqs, peak_pows = get_peak_frequencies(frequency, power, false_alarm_levels[fap_idx])
         # print(false_alarm_levels)
         np.savez(root + f'{sector_data_strings[i]}_periodogram.npz', 
                 frequency=frequency, power=power, false_alarm_levels=false_alarm_levels,

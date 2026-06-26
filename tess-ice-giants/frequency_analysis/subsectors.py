@@ -213,7 +213,7 @@ def split_periodogram(time_stack, flux_stack,
 def split_data(times_list, flux_list, max_freq_arr, freq_array_size=500,
                m=50, total_segs=10, by_time=True, 
                bootstrap=False, 
-               verbose=False):
+               verbose=False, fap_level=0.01):
 
     all_times, all_flux, all_power, all_fap, all_peak = [], [], [], [], []
 
@@ -222,7 +222,7 @@ def split_data(times_list, flux_list, max_freq_arr, freq_array_size=500,
         time_stack, flux_stack = split_lightcurve(times_list[i], flux_list[i], m, total_segs, by_time=by_time)
         frequency, power_stack, fap_stack, peak_stack = split_periodogram(time_stack, flux_stack, max_freq_arr[i], 
                                                                                      freq_array_size=freq_array_size,
-                                                                                     bootstrap=bootstrap)
+                                                                                     bootstrap=bootstrap, fap_level=fap_level)
 
         all_times.append(time_stack)
         all_flux.append(flux_stack)
