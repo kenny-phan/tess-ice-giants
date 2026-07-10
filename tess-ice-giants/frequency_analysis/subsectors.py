@@ -2,6 +2,7 @@ import numpy as np
 from astropy.timeseries import LombScargle
 
 from orbit_correction import linear_detrend
+from fullsector import get_peak_frequencies,debug_print
 
 def split(x, m):
     """Get indices of light curve cut off points"""
@@ -124,9 +125,17 @@ def stack_segments_by_index(time_half, flux_half, half_ratio, total_segs=10):
 def stack_segments_by_time(time_half, flux_half, half_ratio, total_segs=10):
     time_stack, flux_stack = [], []
 
+    # Allocate segments with rounding
+    n_list = [int(np.round(r * total_segs)) for r in half_ratio]
+    remainder = total_segs - sum(n_list)
+    
+    # Add remainder to the segment with the largest ratio
+    largest_idx = np.argmax(half_ratio)
+    n_list[largest_idx] += remainder
+
     for i, segment in enumerate(time_half):
-        n = int(np.round(half_ratio[i] * total_segs))
-        
+        n = n_list[i]
+                
         mask_nans = ~np.isnan(segment)
         segment = segment[mask_nans]
         time_length = (segment[-1] - segment[0]) / n
@@ -161,14 +170,13 @@ def split_lightcurve(time, flux, m, total_segs=10, by_time=True):
 
     return time_stack, flux_stack
 
-from fullsector import get_peak_frequencies,debug_print
 
 def split_periodogram(time_stack, flux_stack, 
                       max_freq, freq_array_size=1000,
                       bootstrap=False, n_bootstrap=1000, 
                       fap_level=0.01):
 
-    power_stack, fap_stack, peak_stack = [], [], []
+    freq_stack, power_stack, fap_stack, peak_stack = [], [], [], []
 
     for i in range(len(time_stack)):
         baseline = time_stack[i][-1] - time_stack[i][0]
@@ -187,35 +195,23 @@ def split_periodogram(time_stack, flux_stack,
         peaks, peak_pows = get_peak_frequencies(frequency, power, [fap])
 
         if len(peaks) > 0:
-            # hwhm_arr = half_width_half_max(frequency, 
-            #                             power, 
-            #                             peaks, 
-            #                             peak_pows, 
-            #                             threshold=hwhm_threshold, 
-            #                             freq_limit=freq_limit,
-            #                             verbose=verbose)
-            
-            # sigma_f_arr = sigma_f_gregory(hwhm_arr, 
-            #                             flux_stack[i], 
-            #                             verbose=verbose)
-            
             peak_stack.append(peaks)
-            # std_stack.append(sigma_f_arr)
-        
+
+        freq_stack.append(frequency)
         power_stack.append(power)
         fap_stack.append(fap)
         
     power_stack = np.array(power_stack)
     fap_stack = np.array(fap_stack)
-    
-    return frequency, power_stack, fap_stack, peak_stack #std_stack
+    freq_stack = np.array(freq_stack)
+    return freq_stack, power_stack, fap_stack, peak_stack #std_stack
 
 def split_data(times_list, flux_list, max_freq_arr, freq_array_size=500,
                m=50, total_segs=10, by_time=True, 
                bootstrap=False, 
                verbose=False, fap_level=0.01):
 
-    all_times, all_flux, all_power, all_fap, all_peak = [], [], [], [], []
+    all_times, all_flux, all_freq, all_power, all_fap, all_peak = [], [], [], [], [], []
 
     for i in range(len(times_list)): 
         debug_print(verbose, f"Processing dataset {i}")
@@ -229,9 +225,9 @@ def split_data(times_list, flux_list, max_freq_arr, freq_array_size=500,
         all_power.append(power_stack)
         all_fap.append(fap_stack)
         all_peak.append(peak_stack)
-        frequency = frequency
+        all_freq.append(frequency)
         
-    return all_times, all_flux, frequency, all_power, all_fap, all_peak
+    return all_times, all_flux, all_freq, all_power, all_fap, all_peak
 
 def get_bin_edges(time_stack, btjd_offset=2400, round_decimals=1):
     bin_edges = []

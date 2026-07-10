@@ -1,14 +1,13 @@
+import emcee
+
 import numpy as np
 import matplotlib.pyplot as plt
-import emcee
-import warnings
 
-from scipy import optimize, stats
-from scipy.stats import norm, truncnorm, skew, gaussian_kde
+from scipy.stats import norm, truncnorm
 from scipy.optimize import minimize_scalar, root_scalar
-from scipy.signal import find_peaks
 
-from bootstrap import fit_gaussian
+from bootstrap import classify_posterior
+from fullsector import debug_print
 from wind_equations import RHS, U_PHI, sigma
 
 # Log-likelihood function
@@ -118,156 +117,6 @@ def solve_intersection_at_phi(wind_eqn, freq_eqn, bounds=(0.01, 2), phi=0.0):
         return result.root
     else:
         raise RuntimeError("No intersection found in the given bounds")
-
-
-## POSTERIOR STATISTICAL CLASSIFICATION FUNCTIONS ##
-
-# fit a gaussian to the mcmc posteriors
-
-def fit_truncated_normal(x, b, mu0=None, sigma0=None):
-    x = np.asarray(x)
-    if mu0 is None: mu0 = np.mean(x)
-    if sigma0 is None: sigma0 = np.std(x, ddof=1)
-
-    def neg_loglike(params):
-        mu, log_sigma = params
-        sigma = np.exp(log_sigma)
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-
-            z = (x - mu) / sigma
-            log_pdf = stats.norm.logpdf(z) - np.log(sigma)
-            log_norm_const = stats.norm.logcdf((b - mu) / sigma)
-
-        return -np.sum(log_pdf - log_norm_const)
-
-    res = optimize.minimize(
-        neg_loglike,
-        x0=[mu0, np.log(sigma0)],
-        method="L-BFGS-B"
-    )
-    mu_hat, sigma_hat = res.x[0], np.exp(res.x[1])
-    return mu_hat, sigma_hat, res
-
-
-
-def credible_interval(samples, ci=0.68):
-    """
-    Compute a credible interval for a (possibly skewed) distribution
-    using quantiles. Works for any posterior shape.
-
-    Parameters
-    ----------
-    samples : array-like
-        Posterior samples.
-    ci : float
-        Credible interval (e.g., 0.68, 0.90, 0.95).
-
-    Returns
-    -------
-    lower : float
-        Lower credible bound.
-    median : float
-        Median of the distribution.
-    upper : float
-        Upper credible bound.
-    """
-    samples = np.asarray(samples)
-
-    alpha = (1 - ci) / 2
-    lower = np.quantile(samples, alpha)
-    median = np.quantile(samples, 0.5)
-    upper = np.quantile(samples, 1 - alpha)
-
-    return lower, median, upper
-
-def detect_truncation(samples, boundaries=[0, 90], delta_loglike=5):
-    """
-    Return True if posterior is significantly better fit by a truncated-normal 
-    than by a standard normal.
-    delta_loglike : threshold difference for significance (in log-evidence units)
-    """
-    samples = np.asarray(samples)
-    low, high = boundaries
-
-    # Fit full (untruncated) Gaussian
-    mu_full = np.mean(samples)
-    sigma_full = np.std(samples)
-
-    ll_full = np.sum(stats.norm.logpdf(samples, mu_full, sigma_full))
-
-    # Fit truncated normal to BOTH boundaries
-    mu_t, sigma_t, _ = fit_truncated_normal(samples, b=low,  mu0=mu_full, sigma0=sigma_full)
-    ll_low = np.sum(stats.truncnorm.logpdf(
-        samples, (low - mu_t)/sigma_t, (high - mu_t)/sigma_t, loc=mu_t, scale=sigma_t
-    ))
-
-    mu_t2, sigma_t2, _ = fit_truncated_normal(samples, b=high, mu0=mu_full, sigma0=sigma_full)
-    ll_high = np.sum(stats.truncnorm.logpdf(
-        samples, (low - mu_t2)/sigma_t2, (high - mu_t2)/sigma_t2, loc=mu_t2, scale=sigma_t2
-    ))
-
-    ll_trunc = max(ll_low, ll_high)
-
-    # If truncated log-likelihood is much higher → it's truncated
-    return (ll_trunc - ll_full) > delta_loglike, ll_low, ll_high
-
-
-def detect_bimodality(samples, min_prominence=0.005):
-    samples = np.asarray(samples, dtype=float).ravel()
-
-    kde = gaussian_kde(samples)
-    xs = np.linspace(samples.min(), samples.max(), 2000)
-    ys = kde(xs)
-
-    # find all peaks
-    peaks, _ = find_peaks(ys, prominence=min_prominence * np.max(ys))
-
-    if len(peaks) < 2:
-        return "unimodal"
-    
-    return "bimodal"
-
-
-def classify_posterior(samples, boundaries=[0, 90], verbose=True):  
-    samples = np.asarray(samples).ravel()
-
-    classification = detect_bimodality(samples)
-
-    if classification == "unimodal":
-        s = skew(samples)
-        mean, std = np.mean(samples), np.std(samples)
-        mu_hat_0, sigma_hat_0, _ = fit_truncated_normal(samples, mu0=mean, sigma0=std, b=boundaries[0])
-        mu_hat_1, sigma_hat_1, _ = fit_truncated_normal(samples, mu0=mean, sigma0=std, b=boundaries[1])
-
-        truc_bool, ll_low, ll_high = detect_truncation(samples, boundaries)
-        debug_print(verbose, msg=f"Skewness: {s:.3f}, Mean: {mean:.3f}, Std: {std:.3f}, Mu0: {mu_hat_0:.3f}, Sigma0: {sigma_hat_0:.3f}, Mu1: {mu_hat_1:.3f}, Sigma1: {sigma_hat_1:.3f}")
-        
-        # Skewness dominates
-        if abs(s) > 1: #or abs(quant_asym) > 0.5
-            lower, median, upper = credible_interval(samples, ci=0.68)
-            lower_bound, upper_bound = np.abs(median - lower), np.abs(upper - median)
-            classification = "Skewed"
-            return classification, median, [lower_bound, upper_bound]
-        
-        if truc_bool:
-            classification = "Truncated Gaussian"
-            # choose which boundary is better fit
-            if ll_low > ll_high:
-                return classification, mu_hat_0, sigma_hat_0
-            else:
-                return classification, mu_hat_1, sigma_hat_1
-
-        else: 
-            classification = "Gaussian"
-            lat, std = fit_gaussian([samples], n_components=1, plot=False)
-            return classification, lat[0][0], std[0][0]
-
-    else:
-        classification = "Bimodal"
-        lat, std = fit_gaussian([samples], n_components=2, plot=False)
-        return classification, lat[0], std[0]
     
     
 #distribution is one wind equation's latitude posterior samples (e.g. uranus s44 sromovsky2012N)
@@ -360,10 +209,6 @@ def fit_all_distributions(phi_distributions_list, wind_eqn_strings, plot=False, 
             print("& " + " & ".join(row_entries) + " \\\\")
 
     return all_latitudes, all_standard_devs
-
-def debug_print(verbose, msg=""):
-    if verbose == True:
-        print(msg)
 
 def sigma_f_to_period(sigma_f, frequency):
     return sigma_f / frequency**2
