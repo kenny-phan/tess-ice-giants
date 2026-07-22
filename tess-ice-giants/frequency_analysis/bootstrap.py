@@ -271,6 +271,7 @@ def cluster_peaks(peaks,
                   plot=False, n_cols=2, 
                   n_bootstraps=10000, 
                   min_prominence=0.01,
+                  pass_frac=0.8,
                   verbose=False):
     
     X = peaks.reshape(-1, 1)
@@ -292,7 +293,7 @@ def cluster_peaks(peaks,
         cluster_points = peaks[labels == label].flatten()
         count = len(cluster_points)
 
-        if count < n_bootstraps * 0.8:
+        if count < n_bootstraps * pass_frac:
             continue
 
         ax = axes[plot_idx]
@@ -320,12 +321,12 @@ def cluster_peaks(peaks,
             count1 = weights[0][0] * count
             count2 = weights[0][1] * count
 
-            if (count1 < n_bootstraps * 0.8) and (count2 < n_bootstraps * 0.8): 
+            if (count1 < n_bootstraps * pass_frac) and (count2 < n_bootstraps * pass_frac): 
                 continue
-            elif (count1 >= n_bootstraps * 0.8) and (count2 < n_bootstraps * 0.8):
+            elif (count1 >= n_bootstraps * pass_frac) and (count2 < n_bootstraps * pass_frac):
                 mean = mean[0]
                 std = std[0]
-            elif (count1 < n_bootstraps * 0.8) and (count2 >= n_bootstraps * 0.8):
+            elif (count1 < n_bootstraps * pass_frac) and (count2 >= n_bootstraps * pass_frac):
                 mean = mean[1]
                 std = std[1]
             else:
@@ -398,6 +399,7 @@ def save_cluster(periodograms,
                  n_cols=3, 
                  n_bootstraps=10000, 
                  min_prominence_arr=[0.5, 0.5, 0.5, 0.5, 0.75],
+                 pass_frac=0.8,
                  verbose=False):
     
     for i, peak_periods in enumerate(peak_periods_list):
@@ -407,6 +409,7 @@ def save_cluster(periodograms,
                                                n_cols=n_cols, 
                                                n_bootstraps=n_bootstraps,
                                                min_prominence=min_prominence_arr[i],
+                                               pass_frac=pass_frac,
                                                verbose=verbose)
 
         means_flat = flatten_mixed_list(all_means)

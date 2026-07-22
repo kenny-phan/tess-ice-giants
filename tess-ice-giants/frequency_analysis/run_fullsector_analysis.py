@@ -80,13 +80,14 @@ for sector in planet_sectors:
     periodogram_list.append(np.load(root + "periodograms/" + f"{sector}_periodogram.npz"))
     bootstrap_list.append(np.load(root + "bootstrap/" + f"{sector}_bootstrap.npz")["peak_periods"])
 
-# save_cluster(periodogram_list, 
-#              bootstrap_list, 
-#              [f"{sector}" for sector in planet_sectors], 
-#              root + "clusters/",
-#              eps_arr=[0.001, 0.001, 0.001, 0.001, 0.005], tolerance= 0.005,
-#              n_cols=3, min_prominence_arr=[0.5, 0.5, 0.5, 0.4, 5],
-#              plot=False)
+save_cluster(periodogram_list, 
+             bootstrap_list, 
+             [f"{sector}" for sector in planet_sectors], 
+             root + "clusters/",
+             eps_arr=[0.001, 0.001, 0.001, 0.001, 0.005], tolerance= 0.005,
+             n_cols=3, min_prominence_arr=[0.5, 0.5, 0.5, 0.41, 5],
+             pass_frac=0.8, 
+             plot=True)
 
 # next lets import in some wind equations to interpret the frequencies we found
 
@@ -131,9 +132,9 @@ for i, cluster in enumerate(cluster_list):
 
     if planet_sectors[i][0] == "u":
         print("Uranus sector: ", planet_sectors[i])
-        # save_mcmc(ur_wind_eqns, ur_wind_eqn_errs, cluster,
-        #           uRe, uRp, uP, uRe_err, uRp_err, uP_err, 
-        #           ur_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/", reperrs=reperrs)
+        save_mcmc(ur_wind_eqns, ur_wind_eqn_errs, cluster,
+                  uRe, uRp, uP, uRe_err, uRp_err, uP_err, 
+                  ur_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/", reperrs=reperrs)
     elif planet_sectors[i][0] == "n":
         print("Neptune sector: ", planet_sectors[i])
         save_mcmc(nep_wind_eqns, nep_wind_eqn_errs, cluster, 
