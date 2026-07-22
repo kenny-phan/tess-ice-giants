@@ -120,15 +120,23 @@ def solve_intersection_at_phi(wind_eqn, freq_eqn, bounds=(0.01, 2), phi=0.0):
     
     
 #distribution is one wind equation's latitude posterior samples (e.g. uranus s44 sromovsky2012N)
-def parse_classifications(distribution, boundaries=[0, 90], plot=True, verbose=False):
+def parse_classifications(distribution, 
+                          boundaries=[0, 90], 
+                          min_prominence=0.01,
+                          plot=True, 
+                          verbose=False, 
+                          allow_skew_truc=True):
     all_means = []
     all_stds = []
 
     for dist in distribution:
         dist = np.asarray(dist, dtype=float).ravel()   # ensure numeric
         
-        classification_result = classify_posterior(dist, boundaries=boundaries)
-        debug_print(verbose, msg=f"Classification Result: {classification_result[0]}")
+        classification_result = classify_posterior(dist, 
+                                                   boundaries=boundaries, 
+                                                   min_prominence=min_prominence,
+                                                   allow_skew_truc=allow_skew_truc)
+        debug_print(verbose, f"Classification Result: {classification_result[0]}")
 
         all_means.append(classification_result[1])
         all_stds.append(classification_result[2])
@@ -172,13 +180,21 @@ def parse_classifications(distribution, boundaries=[0, 90], plot=True, verbose=F
 
     
 # phi_distributions_list: one sector's data
-def fit_all_distributions(phi_distributions_list, wind_eqn_strings, plot=False, print_table=True, verbose=False):
+def fit_all_distributions(phi_distributions_list, 
+                          wind_eqn_strings, 
+                          min_prominence=0.01,
+                          plot=False, 
+                          print_table=True, 
+                          verbose=False):
     all_latitudes = []
     all_standard_devs = []
 
     for i, phi_distributions in enumerate(phi_distributions_list):
         print(f"Processing Wind Equation: {wind_eqn_strings[i]}")
-        latitudes, standard_devs = parse_classifications(phi_distributions, plot=plot, verbose=verbose)
+        latitudes, standard_devs = parse_classifications(phi_distributions, 
+                                                         min_prominence=min_prominence,
+                                                         plot=plot, 
+                                                         verbose=verbose)
         all_latitudes.append(latitudes)
         all_standard_devs.append(standard_devs)
         

@@ -29,12 +29,15 @@ total_segs = 10
 times = [sector['time'] for sector in lc_list]
 fluxes = [sector['orbit_corrected'] for sector in lc_list] 
 
-# this outputs orbit corrected time and flux; periodogram outputs after detrending
+fap_level=0.01
+n_bootstraps=1000
+
+# #this outputs orbit corrected time and flux; periodogram outputs after detrending
 # subtimes, subfluxes, subfreqs, subpower, subfap, subpeaks = split_data(times, fluxes, 
 #                                                                             max_freq_arr, freq_array_size=1000,
 #                                                                             m=50, total_segs=total_segs, 
 #                                                                             bootstrap=True,
-#                                                                             verbose=True, fap_level=0.01)
+#                                                                             verbose=True, fap_level=fap_level)
 
 # np.savez(root + 'subsectors/subsectors.npz', subtimes=np.array(subtimes, dtype=object), subfluxes=np.array(subfluxes, dtype=object),
 #          subfreqs=np.array(subfreqs, dtype=object), subpower=np.array(subpower, dtype=object), subfap=np.array(subfap, dtype=object),
@@ -48,33 +51,29 @@ subfreqs = np.array(subsectors['subfreqs'], dtype=float)
 subpower = list(subsectors['subpower'])
 subfap = list(subsectors['subfap'])
 
-fap_level=0.01
+# # bootstrap each periodogram
+# max_freq_arr = nyquist_from_cadence(sample_cadences / 24)
 
-n_bootstraps=1000
+# for sidx, sector in enumerate(planet_sectors):
+#     print(f"bootstrapping {sector}")
+#     boot_path = root + "subsectors/" + sector + "/bootstrap/"
+#     Path(boot_path).mkdir(exist_ok=True)
 
-# bootstrap each periodogram
-max_freq_arr = nyquist_from_cadence(sample_cadences / 24)
+#     subidx = 0
+#     for time, flux in zip(subtimes[sidx], subfluxes[sidx]):
+#         print(f"subsector {subidx}")
+#         min_freq = 1/((time[-1] - time[0])/2)
 
-for sidx, sector in enumerate(planet_sectors):
-    print(f"bootstrapping {sector}")
-    boot_path = root + "subsectors/" + sector + "/bootstrap/"
-    Path(boot_path).mkdir(exist_ok=True)
+#         peak_periods = bootstrap_peak_periods(time, flux, fap_level=fap_level, 
+#                                                 min_period=1/max_freq_arr[sidx], 
+#                                                 max_period=1/min_freq, 
+#                                                 n_freqs=int(1e5), 
+#                                                 n_bootstraps=n_bootstraps, plot=False)
 
-    subidx = 0
-    for time, flux in zip(subtimes[sidx], subfluxes[sidx]):
-        print(f"subsector {subidx}")
-        min_freq = 1/((time[-1] - time[0])/2)
+#         np.savez(boot_path + f'{sector}_sub{subidx}_bootstrap.npz', 
+#                  peak_periods=peak_periods)
 
-        peak_periods = bootstrap_peak_periods(time, flux, fap_level=fap_level, 
-                                                min_period=1/max_freq_arr[sidx], 
-                                                max_period=1/min_freq, 
-                                                n_freqs=int(1e5), 
-                                                n_bootstraps=n_bootstraps, plot=False)
-
-        np.savez(boot_path + f'{sector}_sub{subidx}_bootstrap.npz', 
-                 peak_periods=peak_periods)
-
-        subidx += 1
+#         subidx += 1
 
 # cluster each bootstrap
 eps=0.0001
@@ -90,14 +89,15 @@ for sidx, sector in enumerate(planet_sectors):
     boot_path = root + "subsectors/" + sector + "/bootstrap/"
 
     subidx = 0
-    for freqs, pows, faps in zip(subfreqs[sidx], subpower[sidx], subfap[sidx]):
+
+    # print(subfreqs.shape, len(subpower), len(subfap))
+    for freq, pow, fap in zip(subfreqs[sidx], subpower[sidx], subfap[sidx]):
         print(f"subsector {subidx}")
-        subfreq, subpow, subfap = freqs[subidx], pows[subidx], faps[subidx]
 
         peak_periods = np.load(boot_path + f'{sector}_sub{subidx}_bootstrap.npz')["peak_periods"]
         _, all_means, all_stds = cluster_peaks(peak_periods, eps=eps, plot=plot, n_cols=ncols, n_bootstraps=n_bootstraps)
         
-        peaks, _ = get_peak_frequencies(subfreq, subpow, subfap)
+        peaks, _ = get_peak_frequencies(freq, pow, fap)
 
         peak_periodogram_periods = np.array(1/peaks)
 
@@ -110,6 +110,8 @@ for sidx, sector in enumerate(planet_sectors):
 
         np.savez(clust_path + f'{sector}_sub{subidx}_clustered_peaks.npz', 
                  matched_means=matched_means, matched_stds=matched_stds)
+        
+        subidx+=1
 
 # mcmc each cluster
 

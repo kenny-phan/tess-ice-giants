@@ -224,7 +224,7 @@ def detect_bimodality(samples, min_prominence=0.005):
     return "bimodal"
 
 
-def classify_posterior(samples, boundaries=[0, 90], min_prominence=0.1,
+def classify_posterior(samples, boundaries=[0, 90], min_prominence=0.01,
                        allow_skew_truc=True, verbose=True):  
     samples = np.asarray(samples).ravel()
 
@@ -270,7 +270,7 @@ def cluster_peaks(peaks,
                   allow_skew_truc=False, 
                   plot=False, n_cols=2, 
                   n_bootstraps=10000, 
-                  min_prominence=0.1,
+                  min_prominence=0.01,
                   verbose=False):
     
     X = peaks.reshape(-1, 1)

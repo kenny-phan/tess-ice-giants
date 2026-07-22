@@ -19,29 +19,29 @@ crop_range_arr = [[1400, 1600], [], [], [975, 1040], []] # in pixels
 # !! actually, orbit correction is already applied in the 
 # !! tess_solarsystem pipeline. this simply detrends the data 
 
-## here we pull light curves from the tess_solarsystem_planets pipeline
-raw_light_curves = f"{root}raw_light_curves/"
+# ## here we pull light curves from the tess_solarsystem_planets pipeline
+# raw_light_curves = f"{root}raw_light_curves/"
 
-uranus_id = '799'  
-neptune_id = '899'         
-observer_id = '@tess'  
+# uranus_id = '799'  
+# neptune_id = '899'         
+# observer_id = '@tess'  
 
-target_id_arr = [uranus_id, uranus_id, uranus_id, neptune_id, neptune_id]
-observer_id_arr = [observer_id]*5
+# target_id_arr = [uranus_id, uranus_id, uranus_id, neptune_id, neptune_id]
+# observer_id_arr = [observer_id]*5
 
-# uranus first, then neptune
-ur_raw_lcs = sorted(glob.glob(raw_light_curves + 'Uranus*/lc_Uranus*.txt'))
-nep_raw_lcs = sorted(glob.glob(raw_light_curves + 'Neptune*/lc_Neptune*.txt'))
-data_file_arr = ur_raw_lcs + nep_raw_lcs
+# # uranus first, then neptune
+# ur_raw_lcs = sorted(glob.glob(raw_light_curves + 'Uranus*/lc_Uranus*.txt'))
+# nep_raw_lcs = sorted(glob.glob(raw_light_curves + 'Neptune*/lc_Neptune*.txt'))
+# data_file_arr = ur_raw_lcs + nep_raw_lcs
 
-correct_and_save_light_curves(
-    target_id_arr, 
-    observer_id_arr, 
-    data_file_arr, 
-    root + 'light_curves/', 
-    name_arr = [f"{sector}_lcs" for sector in planet_sectors],
-    crop_range_arr = crop_range_arr
-)   
+# correct_and_save_light_curves(
+#     target_id_arr, 
+#     observer_id_arr, 
+#     data_file_arr, 
+#     root + 'light_curves/', 
+#     name_arr = [f"{sector}_lcs" for sector in planet_sectors],
+#     crop_range_arr = crop_range_arr
+# )   
 
 # now, lets find the peak frequencies (~30m)
 
@@ -55,23 +55,24 @@ sector_baselines = [(lc['time'][-1] - lc['time'][0]) for lc in lc_list]
 min_freq_arr = 1/(np.array(sector_baselines)/2)
 max_freq_arr = nyquist_from_cadence(sample_cadences / 24)
 
-# make and save the periodograms
-periodogram_dir = root + "periodograms/"
-save_periodograms(lc_list, 
-                  [f"{sector}" for sector in planet_sectors], 
-                  periodogram_dir, fap_idx=1, 
-                  min_freq_arr=min_freq_arr, 
-                  max_freq_arr=max_freq_arr)
+# # make and save the periodograms
+# periodogram_dir = root + "periodograms/"
+# save_periodograms(lc_list, 
+#                   [f"{sector}" for sector in planet_sectors], 
+#                   periodogram_dir, fap_idx=1, 
+#                   min_freq_arr=min_freq_arr, 
+#                   max_freq_arr=max_freq_arr)
 
-## now we bootstrap to get uncertainties on the peak frequencies (~100m)
+# ## now we bootstrap to get uncertainties on the peak frequencies (~100m)
     
-save_bootstrap(lc_list, 
-               [f"{sector}" for sector in planet_sectors], 
-               root + "bootstrap/", fap_level=1/100,
-               min_period_arr=1/max_freq_arr,
-               max_period_arr=1/min_freq_arr)
+# save_bootstrap(lc_list, 
+#                [f"{sector}" for sector in planet_sectors], 
+#                root + "bootstrap/", fap_level=1/100,
+#                min_period_arr=1/max_freq_arr,
+#                max_period_arr=1/min_freq_arr)
 
-# now, cluster the bootstrapped periodograms with dbscan (30s)
+# # now, cluster the bootstrapped periodograms with dbscan (30s)
+# from bootstrap import save_cluster
 
 periodogram_list = []
 bootstrap_list = []
@@ -79,13 +80,13 @@ for sector in planet_sectors:
     periodogram_list.append(np.load(root + "periodograms/" + f"{sector}_periodogram.npz"))
     bootstrap_list.append(np.load(root + "bootstrap/" + f"{sector}_bootstrap.npz")["peak_periods"])
 
-save_cluster(periodogram_list, 
-             bootstrap_list, 
-             [f"{sector}" for sector in planet_sectors], 
-             root + "clusters/",
-             eps=0.0001, 
-             ncols=3, 
-             plot=True)
+# save_cluster(periodogram_list, 
+#              bootstrap_list, 
+#              [f"{sector}" for sector in planet_sectors], 
+#              root + "clusters/",
+#              eps_arr=[0.001, 0.001, 0.001, 0.001, 0.005], tolerance= 0.005,
+#              n_cols=3, min_prominence_arr=[0.5, 0.5, 0.5, 0.4, 5],
+#              plot=False)
 
 # next lets import in some wind equations to interpret the frequencies we found
 
@@ -118,7 +119,6 @@ reperr15 = 0.147 / 24 # 0.147 degrees/day, pg. 11 of Sromovsky+ 2015
 reperrs = [reperr12, reperr12, reperr15, reperr15]
 
 # run mcmc fits for each cluster and save the results (~115m)
-# planet_sectors = ["u43"]
 # load in the clusters
 
 cluster_list = []
@@ -130,10 +130,12 @@ for i, cluster in enumerate(cluster_list):
     # frequency_errs = periodogram['peak_std']
 
     if planet_sectors[i][0] == "u":
-        save_mcmc(ur_wind_eqns, ur_wind_eqn_errs, cluster,
-                  uRe, uRp, uP, uRe_err, uRp_err, uP_err, 
-                  ur_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/", reperrs=reperrs)
+        print("Uranus sector: ", planet_sectors[i])
+        # save_mcmc(ur_wind_eqns, ur_wind_eqn_errs, cluster,
+        #           uRe, uRp, uP, uRe_err, uRp_err, uP_err, 
+        #           ur_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/", reperrs=reperrs)
     elif planet_sectors[i][0] == "n":
+        print("Neptune sector: ", planet_sectors[i])
         save_mcmc(nep_wind_eqns, nep_wind_eqn_errs, cluster, 
                   nRe, nRp, nP, nRe_err, nRp_err, nP_err, 
                   nep_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/")
@@ -151,8 +153,12 @@ for i, phi_dist in enumerate(mcmc_list):
     print(len(phi_dist["phi_distributions"][0]))
     print(f"Planet sector: {planet_sectors[i]}")
 
-    all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], phi_dist["wind_eqn_strings"], plot=False)
+    all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], 
+                                                             phi_dist["wind_eqn_strings"], 
+                                                             plot=False)
 
     np.savez(root + "latitudes/" + f"{planet_sectors[i]}_latitude_solutions.npz", 
-                lat=np.array(all_latitudes, dtype=object), std=np.array(all_standard_devs, dtype=object), allow_pickle=True)
+                lat=np.array(all_latitudes, dtype=object), 
+                std=np.array(all_standard_devs, dtype=object), 
+                allow_pickle=True)
 
