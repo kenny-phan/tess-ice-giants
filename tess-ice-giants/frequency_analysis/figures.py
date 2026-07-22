@@ -62,9 +62,12 @@ def scatter_data(axs, name, sector, x, y, color):
     axs.figure.canvas.draw()
 
 def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10, 1, 0.01], xlim=[8, 24], legend_loc="upper left"):
-
+    x_mask = (24/frequency >= xlim[0]) & (24/frequency <= xlim[1])
+    frequency = frequency[x_mask]
+    power = power[x_mask]
     axs.plot(24 / frequency, power, color=color, linewidth=2)
     for i, fap in enumerate(np.flip(fap_stack)):
+        fap = fap[x_mask]
         axs.plot(24 / frequency, fap, linestyle='dashed', label=f'{np.flip(probabilities)[i]}% FAP Line', linewidth=2)
 
     formatter = ScalarFormatter(useMathText=True)
