@@ -438,11 +438,14 @@ def plot_split_lightcurves(axs, time_stack, flux_stack, title):
     axs.figure.canvas.draw()
 
 
-def plot_split_periodograms(axs, frequency, power_stack, fap_stack):
+def plot_split_periodograms(axs, 
+                            frequency, 
+                            power_stack, 
+                            fap_stack, xlim=[8, 24]):
     # axs.set_title(title)
 
     for i in range(len(power_stack)):
-        axs.plot(24/frequency, power_stack[i], linewidth=2, label=f"Bin {i + 1}")
+        axs.plot(24/frequency[i], power_stack[i], linewidth=2, label=f"Bin {i + 1}")
         axs.axhline(fap_stack[i], color=tableau_cb10[i], linestyle='--')
     axs.grid()
 
@@ -454,13 +457,14 @@ def plot_split_periodograms(axs, frequency, power_stack, fap_stack):
     #axs.yaxis.set_major_formatter(formatter)
     axs.xaxis.set_minor_locator(AutoMinorLocator())
     axs.figure.canvas.draw()
-    axs.set_xlim(8, 24)
+    axs.set_xlim(xlim[0], xlim[1])
     axs.set_xlabel("Period [hours]")
 
 
 def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, min_per, max_per,
                  btjd_offset=2400, round_decimals=1,
-                 gap_factor=3, vmin=0, vmax=1, output_table=False):
+                 gap_factor=3, vmin=0, vmax=1, output_table=False,
+                 xlim=None):
 
     period_limit = 1/max_frequency   # in hours
 
@@ -478,6 +482,7 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
     time_ranges = []
     tot_time = 0
 
+    period_grid = np.linspace(min_per, max_per, 100)
     peak_freqs, periods = [], []
     for i, time in enumerate(time_stack):
         time = time - 2457000
@@ -485,7 +490,9 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
         end_time = np.round(time[-1], decimals=round_decimals + 1)
         range_time = np.round(time[-1] - time[0], decimals=round_decimals + 1)
         tot_time += range_time
-        peak_frequencies, power_vals = get_peak_frequencies(frequency, power[i], np.full_like(frequency, 0))
+        peak_frequencies, power_vals = get_peak_frequencies(frequency[i], 
+                                                            power[i], 
+                                                            np.full_like(frequency[i], 0))
         mask = peak_frequencies > max_frequency
         peaks_below_limit, power_below_limit = peak_frequencies[mask], power_vals[mask]
 
@@ -503,8 +510,25 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
             else:
                 print(f" & {output_period} & {start_time} - {end_time} & {range_time} \\\\")
 
-        period_power = np.interp(np.linspace(min_per, max_per, 100), np.flip(24/frequency), np.flip(np.array(power[i], dtype=float)))
-        new_power.append(period_power)
+        period_periods = np.flip(24/frequency[i])
+        period_power = np.flip(np.array(power[i], dtype=float))
+
+        # Find the valid period range in your native data
+        min_period = period_periods.min()
+        max_period = period_periods.max()
+
+        # Create output array filled with NaN
+        resamp_period_power = np.full_like(period_grid, np.nan, dtype=float)
+
+        # Mask for valid period range
+        valid_mask = (period_grid >= min_period) & (period_grid <= max_period)
+
+        # Interpolate only within valid range
+        resamp_period_power[valid_mask] = np.interp(period_grid[valid_mask], 
+                                                    period_periods, 
+                                                    period_power)
+        
+        new_power.append(resamp_period_power)
         time_ranges.append(range_time)
 
     print(f"TOTAL BIN TIME: {tot_time}")
@@ -533,7 +557,8 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
     axs.imshow(new_power, interpolation='nearest', aspect='auto',
                     origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
 
-    # axs.set_yticks(np.linspace(0, 99, 5), [8, 12, 16, 20, 24])
+    period_range = np.arange(xlim[0], xlim[1] + 1, 2)
+    axs.set_yticks(np.linspace(0, 99, len(period_range)), period_range, fontsize=12)
     x_ticks = np.cumsum([0] + [s.shape[0] for s in stretched_rows])
     x_labels = [f"{t:.1f}" for t in expanded_bin_starts]
 
@@ -552,7 +577,14 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
 
     return np.array(peak_freqs), np.array(periods), np.array(new_power), np.array(time_ranges), stretched_rows, expanded_bin_starts
 
-def plot_subsector_heatmap(planet, subtimes, subfluxes, subfreqs, subpower, subfap, labels, max_freq, offset, min_per, max_per):
+def plot_subsector_heatmap(planet, 
+                           subtimes, subfluxes, 
+                           subfreqs, subpower, subfap, 
+                           labels, max_freq, offset, 
+                           min_per, max_per, xlim=None):
+
+    if xlim is None:
+        xlim = [min_per, max_per]
 
     fig = plt.figure(figsize=(20, 18))
     gs = fig.add_gridspec(nrows=3, ncols=7, height_ratios=[1, 1, 1], width_ratios=[1, 1, 1, 1, 1, 1, 0.1], wspace=0.3)
@@ -624,14 +656,14 @@ def plot_subsector_heatmap(planet, subtimes, subfluxes, subfreqs, subpower, subf
     ax1.legend(fontsize=10, ncol=2)
 
     for j, ax in enumerate(pg_axs):
-        plot_split_periodograms(ax, subfreqs[j], subpower[j], subfap[j])
+        plot_split_periodograms(ax, subfreqs[j], subpower[j], subfap[j], xlim=xlim)
     # heatmaps
 
     period_powers = []
     for j in range(len(hm_axs)):
         for i in range(len(subtimes[j])):
             pp = np.interp(np.linspace(min_per, max_per, 100), 
-                           np.flip(np.asarray(24/subfreqs[j], dtype=float)), 
+                           np.flip(np.asarray(24/subfreqs[j][i], dtype=float)), 
                            np.flip(np.asarray(subpower[j][i], dtype=float)))
             period_powers.append(pp)
 
@@ -643,10 +675,9 @@ def plot_subsector_heatmap(planet, subtimes, subfluxes, subfreqs, subpower, subf
         plot_heatmap(ax, subtimes[j], subfreqs[j], 
                      max_freq, subpower[j], subfap[j], 
                      min_per, max_per, btjd_offset=offset[j], 
-                     vmin=vmin, vmax=vmax)
+                     vmin=vmin, vmax=vmax, xlim=xlim)
 
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     cb1 = mpl.colorbar.ColorbarBase(cbar_ax, cmap="coolwarm", norm=norm)
 
-    plt.tight_layout()
     plt.show()

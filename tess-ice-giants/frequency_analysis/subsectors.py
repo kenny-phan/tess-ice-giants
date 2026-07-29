@@ -192,7 +192,7 @@ def split_periodogram(time_stack, flux_stack,
         else: 
             fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level)
 
-        peaks, peak_pows = get_peak_frequencies(frequency, power, [fap])
+        peaks, _ = get_peak_frequencies(frequency, power, [fap])
 
         if len(peaks) > 0:
             peak_stack.append(peaks)
