@@ -22,100 +22,75 @@ lc_list = []
 for sector in planet_sectors:
     lc_list.append(np.load(lc_dir + f'{sector}_lcs.npz', allow_pickle=True))
 
-max_freq_arr = nyquist_from_cadence(sample_cadences)
+# ~10 min runtime, save subsectors
+# max_freq_arr = nyquist_from_cadence(sample_cadences)
 
-total_segs = 10
+# total_segs = 10
 
-times = [sector['time'] for sector in lc_list]
-fluxes = [sector['orbit_corrected'] for sector in lc_list] 
-
-fap_level=0.01
-n_bootstraps=1000
-
-# #this outputs orbit corrected time and flux; periodogram outputs after detrending
+# times = [sector['time'] for sector in lc_list]
+# fluxes = [sector['orbit_corrected'] for sector in lc_list]
 # subtimes, subfluxes, subfreqs, subpower, subfap, subpeaks = split_data(times, fluxes, 
 #                                                                             max_freq_arr, freq_array_size=1000,
 #                                                                             m=50, total_segs=total_segs, 
 #                                                                             bootstrap=True,
-#                                                                             verbose=True, fap_level=fap_level)
+#                                                                             verbose=True)
 
 # np.savez(root + 'subsectors/subsectors.npz', subtimes=np.array(subtimes, dtype=object), subfluxes=np.array(subfluxes, dtype=object),
 #          subfreqs=np.array(subfreqs, dtype=object), subpower=np.array(subpower, dtype=object), subfap=np.array(subfap, dtype=object),
 #          subpeaks=np.array(subpeaks, dtype=object),
 #          allow_pickle=True)
 
+# run bootstrap ~50 mins
 subsectors = np.load(root + 'subsectors/subsectors.npz', allow_pickle=True)
-subtimes = list(subsectors['subtimes'])
-subfluxes = list(subsectors['subfluxes'])
+subtimes = subsectors['subtimes']
+subfluxes = subsectors['subfluxes']
 subfreqs = np.array(subsectors['subfreqs'], dtype=float)
-subpower = list(subsectors['subpower'])
-subfap = list(subsectors['subfap'])
+subpower = subsectors['subpower']
+subfap = subsectors['subfap']
 
-# # bootstrap each periodogram
-# max_freq_arr = nyquist_from_cadence(sample_cadences / 24)
+nsec, nsub = subtimes.shape
 
-# for sidx, sector in enumerate(planet_sectors):
-#     print(f"bootstrapping {sector}")
-#     boot_path = root + "subsectors/" + sector + "/bootstrap/"
-#     Path(boot_path).mkdir(exist_ok=True)
+# bootstrap_results = np.empty((nsec, nsub), dtype=object)
+# for sec in range(nsec):
+#     print(f"Bootstrapping sector {sec+1}/{nsec}...")
+#     for sub in range(nsub):
+#         print(f"Bootstrapping subsector {sub+1}/{nsub}...")
+#         peak_periods = bootstrap_peak_periods(subtimes[sec, sub], 
+#                                               subfluxes[sec, sub], 
+#                                               fap_level=0.01, 
+#                                               n_bootstraps=10000, boot_percent=0.8, 
+#                                               min_period=5/24, max_period=25/24, 
+#                                               n_freqs=1000, plot=True, n_plot=100)
+#         bootstrap_results[sec, sub] = peak_periods
 
-#     subidx = 0
-#     for time, flux in zip(subtimes[sidx], subfluxes[sidx]):
-#         print(f"subsector {subidx}")
-#         min_freq = 1/((time[-1] - time[0])/2)
+# np.savez(root + 'subsectors/bootstrap_results.npz', bootstrap_results=bootstrap_results, allow_pickle=True)
 
-#         peak_periods = bootstrap_peak_periods(time, flux, fap_level=fap_level, 
-#                                                 min_period=1/max_freq_arr[sidx], 
-#                                                 max_period=1/min_freq, 
-#                                                 n_freqs=int(1e5), 
-#                                                 n_bootstraps=n_bootstraps, plot=False)
+# # run cluster ~10min
+# bootstrap_results = np.load(root + 'subsectors/bootstrap_results.npz', allow_pickle=True)['bootstrap_results']
 
-#         np.savez(boot_path + f'{sector}_sub{subidx}_bootstrap.npz', 
-#                  peak_periods=peak_periods)
+# from bootstrap import cluster_peaks
+# nsec, nsub = bootstrap_results.shape
+# cluster_results = np.empty((nsec, nsub), dtype=object)
+# for sec in range(nsec):
+#     print(f"Processing sector {sec}/{nsec}...")
+#     for sub in range(nsub):
+#         peaks = bootstrap_results[sec, sub]
+#         labels, all_means, all_stds = cluster_peaks(peaks, 
+#                                                     eps=0.005, 
+#                                                     plot=True,
+#                                                     allow_skew_truc=True,
+#                                                     skew_threshold=0.9,
+#                                                     min_prominence=0.8, 
+#                                                     n_bootstraps=10000,
+#                                                     pass_frac=0.8)
+#         cluster_results[sec, sub] = (labels, all_means, all_stds)
 
-#         subidx += 1
+# np.savez(root + 'subsectors/cluster_results.npz', cluster_results=cluster_results, allow_pickle=True)
 
-# cluster each bootstrap
-eps=0.0001
-tolerance= 0.005
-ncols=3
-plot=False
+# run mcmc
+from wind_equations import *
+cluster_results = np.load(root + 'subsectors/cluster_results.npz', allow_pickle=True)['cluster_results']
 
-for sidx, sector in enumerate(planet_sectors):
-    print(f"clustering {sector}")
-    clust_path = root + "subsectors/" + sector + "/clusters/"
-    Path(clust_path).mkdir(exist_ok=True)
-
-    boot_path = root + "subsectors/" + sector + "/bootstrap/"
-
-    subidx = 0
-
-    # print(subfreqs.shape, len(subpower), len(subfap))
-    for freq, pow, fap in zip(subfreqs[sidx], subpower[sidx], subfap[sidx]):
-        print(f"subsector {subidx}")
-
-        peak_periods = np.load(boot_path + f'{sector}_sub{subidx}_bootstrap.npz')["peak_periods"]
-        _, all_means, all_stds = cluster_peaks(peak_periods, eps=eps, plot=plot, n_cols=ncols, n_bootstraps=n_bootstraps)
-        
-        peaks, _ = get_peak_frequencies(freq, pow, fap)
-
-        peak_periodogram_periods = np.array(1/peaks)
-
-        xmatch = np.abs(peak_periodogram_periods[:, np.newaxis] - np.array(all_means))
-        potential_matches = np.abs(xmatch) < tolerance
-        closest_matches, _ = np.unique(np.where(potential_matches)[1], return_counts=True)
-
-        matched_means = np.array(all_means)[closest_matches]
-        matched_stds = np.array(all_stds)[closest_matches]
-
-        np.savez(clust_path + f'{sector}_sub{subidx}_clustered_peaks.npz', 
-                 matched_means=matched_means, matched_stds=matched_stds)
-        
-        subidx+=1
-
-# mcmc each cluster
-
-# next lets import in some wind equations to interpret the frequencies we found
 ur_wind_eqns = [sromovsky2012_odd_N, sromovsky2012_odd_S, sromovsky2015_N, sromovsky2015_S]
 # ur_wind_eqn_errs = [sigma_sromovsky2012_odd_N, sigma_sromovsky2012_odd_S, sigma_sromovsky2015_N, sigma_sromovsky2015_S]
 ur_wind_eqn_errs = [sigma_uranus_model(wind_eqn) for wind_eqn in ur_wind_eqns]
@@ -144,40 +119,36 @@ reperr12 = 0.088 # degrees/h, pg. 11 of Sromovsky+ 2012c
 reperr15 = 0.147 / 24 # 0.147 degrees/day, pg. 11 of Sromovsky+ 2015
 reperrs = [reperr12, reperr12, reperr15, reperr15]
 
-for sidx, sector in enumerate(planet_sectors):
-    print(f"mcmc {sector}")
-    clust_path = root + "subsectors/" + sector + "/clusters/"
+sub_root = root + "/subsectors/"
 
-    mcmc_path = root + "subsectors/" + sector + "/mcmc/"
-    Path(mcmc_path).mkdir(exist_ok=True)
+nsec, nsub = cluster_results.shape
 
-    cluster_list = glob.glob(clust_path + "*")
+mcmc_results = np.empty((nsec, nsub))
+for i, sec in enumerate(range(nsec)):
+    mcmc_root = sub_root + f"{planet_sectors[i]}/"
 
-    for subidx, cluster in enumerate(cluster_list):
+    for sub in range(nsub):
+        labels, all_means, all_stds = cluster_results[sec, sub]
+        sector_data = {}
+        sector_data['matched_means'] = []
+        sector_data['matched_stds'] = []
+        
+        if len(all_means) > 0:
+            sector_data['matched_means'].extend(all_means)
+            sector_data['matched_stds'].extend(all_stds)
+        
+        for key in sector_data:
+            sector_data[key] = np.array(sector_data[key])
 
-        if planet_sectors[sidx][0] == "u":
-            save_mcmc(ur_wind_eqns, ur_wind_eqn_errs, cluster,
-                    uRe, uRp, uP, uRe_err, uRp_err, uP_err, 
-                    ur_wind_eqn_strings, f'{sector}_sub{subidx}', mcmc_path, reperrs=reperrs)
-        elif planet_sectors[sidx][0] == "n":
-            save_mcmc(nep_wind_eqns, nep_wind_eqn_errs, cluster, 
-                    nRe, nRp, nP, nRe_err, nRp_err, nP_err, 
-                    nep_wind_eqn_strings, f'{sector}_sub{subidx}', mcmc_path)
-
-# save latitude solutions
-# we now have posterior distributions for each solution, lets get one sigma interval ~10m
-for sidx, sector in enumerate(planet_sectors):
-    print(f"latsol {sector}")
-    mcmc_path = root + "subsectors/" + sector + "/mcmc/"
-    latsol_path = root + "subsectors/" + sector + "/latitudes/"
-
-    Path(latsol_path).mkdir(exist_ok=True)
-
-    mcmc_list = glob.glob(mcmc_path + "*")
-    for i, phi_dist in enumerate(mcmc_list):
-        print(f"Planet subsector: {i}")
-
-        all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], phi_dist["wind_eqn_strings"], plot=False)
-
-        np.savez(latsol_path + f"{sector}_sub{subidx}_latitude_solutions.npz", 
-                    lat=np.array(all_latitudes, dtype=object), std=np.array(all_standard_devs, dtype=object), allow_pickle=True)
+        print(f"Type of sector_data['matched_means']: {type(sector_data['matched_means'])}")
+        print(f"Dtype: {sector_data['matched_means'].dtype if hasattr(sector_data['matched_means'], 'dtype') else 'No dtype'}")
+        if planet_sectors[i][0] == "u":
+            print("Uranus sector: ", planet_sectors[i])
+            save_mcmc(ur_wind_eqns, ur_wind_eqn_errs, sector_data,
+                        uRe, uRp, uP, uRe_err, uRp_err, uP_err, 
+                        ur_wind_eqn_strings, f"subsector{sub}", mcmc_root + "mcmc/", reperrs=reperrs)
+        elif planet_sectors[i][0] == "n":
+            print("Neptune sector: ", planet_sectors[i])
+            save_mcmc(nep_wind_eqns, nep_wind_eqn_errs, sector_data, 
+                        nRe, nRp, nP, nRe_err, nRp_err, nP_err, 
+                        nep_wind_eqn_strings, f"subsector{sub}", mcmc_root + "mcmc/")

@@ -74,9 +74,11 @@ def fit_gaussian(phi_deg_array, n_components=None, plot=False):
     return latitudes, standard_devs, weights
 
 
-def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percent=0.7, 
+def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percent=0.8, 
                            min_period=5, max_period=20, n_freqs=10000, plot=False, n_plot=100): 
     """Bootstrap the peak periods from the Lomb-Scargle periodogram of the lightcurve.""" 
+        # min, max period in days
+
     peak_periods = [] 
     n_data = len(time) 
     freq_grid = np.linspace(1/max_period, 1/min_period, n_freqs)
@@ -110,6 +112,9 @@ def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percen
     if plot: 
         plt.legend()
         plt.show()
+
+    if len(peak_periods) == 0:
+        return np.array([])
     
     return np.concatenate(peak_periods)
 
@@ -176,7 +181,7 @@ def credible_interval(samples, ci=0.68):
     return lower, median, upper
 
 
-def detect_truncation(samples, boundaries=[0, 90], delta_loglike=5):
+def detect_truncation(samples, boundaries=[0, 90], delta_loglike=15):
     """
     Return True if posterior is significantly better fit by a truncated-normal 
     than by a standard normal.
@@ -210,8 +215,11 @@ def detect_truncation(samples, boundaries=[0, 90], delta_loglike=5):
 
 def detect_bimodality(samples, min_prominence=0.005):
     samples = np.asarray(samples, dtype=float).ravel()
-
-    kde = gaussian_kde(samples)
+    try:
+        kde = gaussian_kde(samples)
+    except np.linalg.LinAlgError:
+        # If KDE fails due to singular matrix, treat as unimodal
+        return "unimodal"
     xs = np.linspace(samples.min(), samples.max(), 2000)
     ys = kde(xs)
 
@@ -225,7 +233,7 @@ def detect_bimodality(samples, min_prominence=0.005):
 
 
 def classify_posterior(samples, boundaries=[0, 90], min_prominence=0.01,
-                       allow_skew_truc=True, verbose=True):  
+                       allow_skew_truc=True, skew_threshold=1, verbose=True):  
     samples = np.asarray(samples).ravel()
 
     classification = detect_bimodality(samples, min_prominence=min_prominence)
@@ -238,9 +246,10 @@ def classify_posterior(samples, boundaries=[0, 90], min_prominence=0.01,
 
         truc_bool, ll_low, ll_high = detect_truncation(samples, boundaries)
         debug_print(verbose, f"Skewness: {s:.3f}, Mean: {mean:.3f}, Std: {std:.3f}, Mu0: {mu_hat_0:.3f}, Sigma0: {sigma_hat_0:.3f}, Mu1: {mu_hat_1:.3f}, Sigma1: {sigma_hat_1:.3f}")
-        
+        print("skewness: ", s)
+
         # Skewness dominates
-        if (abs(s) > 1) and allow_skew_truc: 
+        if (abs(s) > skew_threshold) and allow_skew_truc: 
             lower, median, upper = credible_interval(samples, ci=0.68)
             lower_bound, upper_bound = np.abs(median - lower), np.abs(upper - median)
             classification = "Skewed"
@@ -271,7 +280,7 @@ def cluster_peaks(peaks,
                   plot=False, n_cols=2, 
                   n_bootstraps=10000, 
                   min_prominence=0.01,
-                  pass_frac=0.8,
+                  pass_frac=0.8, skew_threshold=1,
                   verbose=False):
     
     X = peaks.reshape(-1, 1)
@@ -305,6 +314,7 @@ def cluster_peaks(peaks,
                                                        [np.min(cluster_points), 
                                                         np.max(cluster_points)],
                                                           allow_skew_truc=allow_skew_truc,
+                                                          skew_threshold=skew_threshold,
                                                           min_prominence=min_prominence,
                                                           verbose=verbose)
         
@@ -366,7 +376,7 @@ def cluster_peaks(peaks,
 
     return labels, all_means, all_stds
 
-def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_level=0.1, min_period_arr=[], max_period_arr=[],
+def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_level=0.01, min_period_arr=[], max_period_arr=[],
                    n_freqs=int(1e5), n_bootstraps=10000, plot=True):
     
     for i, sector_data in enumerate(sector_data_list):
