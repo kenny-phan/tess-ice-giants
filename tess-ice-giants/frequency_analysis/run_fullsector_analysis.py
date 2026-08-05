@@ -74,20 +74,20 @@ max_freq_arr = nyquist_from_cadence(sample_cadences / 24)
 # # now, cluster the bootstrapped periodograms with dbscan (30s)
 # from bootstrap import save_cluster
 
-periodogram_list = []
-bootstrap_list = []
-for sector in planet_sectors:
-    periodogram_list.append(np.load(root + "periodograms/" + f"{sector}_periodogram.npz"))
-    bootstrap_list.append(np.load(root + "bootstrap/" + f"{sector}_bootstrap.npz")["peak_periods"])
+# periodogram_list = []
+# bootstrap_list = []
+# for sector in planet_sectors:
+#     periodogram_list.append(np.load(root + "periodograms/" + f"{sector}_periodogram.npz"))
+#     bootstrap_list.append(np.load(root + "bootstrap/" + f"{sector}_bootstrap.npz")["peak_periods"])
 
-save_cluster(periodogram_list, 
-             bootstrap_list, 
-             [f"{sector}" for sector in planet_sectors], 
-             root + "clusters/",
-             eps_arr=[0.001, 0.001, 0.001, 0.001, 0.005], tolerance= 0.005,
-             n_cols=3, min_prominence_arr=[0.5, 0.5, 0.5, 0.41, 5],
-             pass_frac=0.8, 
-             plot=True)
+# save_cluster(periodogram_list, 
+#              bootstrap_list, 
+#              [f"{sector}" for sector in planet_sectors], 
+#              root + "clusters/",
+#              eps_arr=[0.001, 0.001, 0.001, 0.001, 0.005], tolerance= 0.005,
+#              n_cols=3, min_prominence_arr=[0.5, 0.5, 0.5, 0.41, 5],
+#              pass_frac=0.8, 
+#              plot=True)
 
 # next lets import in some wind equations to interpret the frequencies we found
 
@@ -103,7 +103,7 @@ nep_wind_eqn_strings = ["sromovsky1993_four", "sromovsky1993_six", "tollefson201
 # planet data
 uRe = 25559 * 1000
 uRp = 24973 * 1000
-uP = 17.247864
+uP = -17.247864
 uRe_err = 4000
 uRp_err = 20000
 uP_err = 0.00001
@@ -121,7 +121,7 @@ reperrs = [reperr12, reperr12, reperr15, reperr15]
 
 # run mcmc fits for each cluster and save the results (~115m)
 # load in the clusters
-
+print("beginning MCMC fits for each cluster...")
 cluster_list = []
 for sector in planet_sectors:
     cluster_list.append(np.load(root + "clusters/" + f"{sector}_clustered_peaks.npz", allow_pickle=True))
@@ -137,9 +137,9 @@ for i, cluster in enumerate(cluster_list):
                   ur_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/", reperrs=reperrs)
     elif planet_sectors[i][0] == "n":
         print("Neptune sector: ", planet_sectors[i])
-        save_mcmc(nep_wind_eqns, nep_wind_eqn_errs, cluster, 
-                  nRe, nRp, nP, nRe_err, nRp_err, nP_err, 
-                  nep_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/")
+        # save_mcmc(nep_wind_eqns, nep_wind_eqn_errs, cluster, 
+        #           nRe, nRp, nP, nRe_err, nRp_err, nP_err, 
+        #           nep_wind_eqn_strings, f"{planet_sectors[i]}", root + "mcmc/")
 
 # load the mcmc posteriors back in
 mcmc_dir = root + "mcmc/"

@@ -1,5 +1,8 @@
 import glob
+import os
+
 import numpy as np
+from tqdm import tqdm 
 
 from pathlib import Path
 
@@ -129,6 +132,14 @@ for i, sec in enumerate(range(nsec)):
 
     for sub in range(nsub):
         labels, all_means, all_stds = cluster_results[sec, sub]
+        for i, std in enumerate(all_stds):
+            try:
+                if len(std) > 1:
+                    all_stds[i] = np.mean(std)
+            except TypeError:
+                # std is a scalar, leave it alone
+                pass
+
         sector_data = {}
         sector_data['matched_means'] = []
         sector_data['matched_stds'] = []
@@ -137,8 +148,8 @@ for i, sec in enumerate(range(nsec)):
             sector_data['matched_means'].extend(all_means)
             sector_data['matched_stds'].extend(all_stds)
         
-        for key in sector_data:
-            sector_data[key] = np.array(sector_data[key])
+        # for key in sector_data:
+        #     sector_data[key] = np.array(sector_data[key])
 
         print(f"Type of sector_data['matched_means']: {type(sector_data['matched_means'])}")
         print(f"Dtype: {sector_data['matched_means'].dtype if hasattr(sector_data['matched_means'], 'dtype') else 'No dtype'}")
@@ -152,3 +163,30 @@ for i, sec in enumerate(range(nsec)):
             save_mcmc(nep_wind_eqns, nep_wind_eqn_errs, sector_data, 
                         nRe, nRp, nP, nRe_err, nRp_err, nP_err, 
                         nep_wind_eqn_strings, f"subsector{sub}", mcmc_root + "mcmc/")
+
+# # we now have posterior distributions for each solution, lets get one sigma interval ~20m
+
+subroot = root + "subsectors"
+
+print(root)
+for sector in planet_sectors:
+    secsubroot = subroot + "/" + sector
+    mcmc_list = glob.glob(secsubroot + "/mcmc/*")
+
+    for i, phi_file in tqdm(enumerate(mcmc_list)):
+        phi_dist = np.load(phi_file, allow_pickle=True)
+
+        # print(len(phi_dist["phi_distributions"][0]))
+        # print(f"Planet sector: {planet_sectors[i]}")
+
+        all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], 
+                                                                phi_dist["wind_eqn_strings"], 
+                                                                plot=False)
+
+        if os.path.exists(secsubroot + "/latitudes/") == False:
+            os.makedirs(secsubroot + "/latitudes/")
+
+        np.savez(secsubroot + "/latitudes/" + f"{sector}_sub{i}_latitude_solutions.npz", 
+                    lat=np.array(all_latitudes, dtype=object), 
+                    std=np.array(all_standard_devs, dtype=object), 
+                    allow_pickle=True) #   mcmc_list.append(np.load(mcmc_dir + f"{sector}_phi_distributions.npz", allow_pickle=True))

@@ -298,12 +298,14 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
 
         phi_arr = []
 
+        means = np.array(cluster_arr['matched_means'])
+        stds = np.array(cluster_arr['matched_stds'])
         # default units of 'matched means' is days
         # take only the peaks that are below the period limit, convert to 1/days
-        means_filtered = 1 / cluster_arr['matched_means'][cluster_arr['matched_means'] < period_limit]
+        means_filtered = 1 / means[means < period_limit]
 
         # # standard deviations, default units of days
-        stds_filtered_periods = cluster_arr['matched_stds'][cluster_arr['matched_means'] < period_limit]
+        stds_filtered_periods = stds[means < period_limit]
 
         # # uncertainty in frequency is related to uncertainty in period by sigma_f = (1/P^2) * sigma_P, where P is the period
         stds_filtered = stds_filtered_periods * (means_filtered**2)
@@ -312,7 +314,9 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
 
         print("Processing wind equation:", wind_eqn_strings[i])
         for f_obs, f_err in zip(means_filtered, stds_filtered):
+
             print("Frequency, error:", f_obs, f_err)
+            
             sampler = mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_steps=n_steps)
 
             samples = sampler.get_chain(discard=1000, flat=True)

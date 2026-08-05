@@ -61,7 +61,11 @@ def scatter_data(axs, name, sector, x, y, color):
     axs.xaxis.set_minor_locator(AutoMinorLocator())
     axs.figure.canvas.draw()
 
-def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10, 1, 0.01], xlim=[8, 24], legend_loc="upper left"):
+def plot_periodogram(axs, frequency, power, fap_stack, color, 
+                     probabilities=[10, 1, 0.01], 
+                     xlim=[8, 24], 
+                     legend_loc="upper right", 
+                     log=True, period_limit=None):
     x_mask = (24/frequency >= xlim[0]) & (24/frequency <= xlim[1])
     frequency = frequency[x_mask]
     power = power[x_mask]
@@ -72,25 +76,36 @@ def plot_periodogram(axs, frequency, power, fap_stack, color, probabilities=[10,
 
     formatter = ScalarFormatter(useMathText=True)
     formatter.set_scientific(True)
-    formatter.set_powerlimits((0, 0))  # Forces scientific notation for small/large numbers
-
+    formatter.set_powerlimits((0, 0))
     axs.yaxis.set_major_formatter(formatter)
     axs.xaxis.set_minor_locator(AutoMinorLocator())
-    axs.figure.canvas.draw()
     axs.set_xlabel("Period [hours]")
-
 
     axs.set_xlim(xlim[0], xlim[1])
     axs.set_ylim(0, None)
-    # axs.set_title(title)
+
+    if log:
+        axs.set_xscale('log')
+        x_major = mpl.ticker.LogLocator(base=10.0, numticks=5)
+        axs.xaxis.set_major_locator(x_major)
+        x_minor = mpl.ticker.LogLocator(base=10.0, subs=np.arange(1.0, 10.0) * 0.1, numticks=10)
+        axs.xaxis.set_minor_locator(x_minor)
+        # OPTIONAL: Only use NullFormatter if you really don't want labels
+        # axs.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
+    if period_limit is not None:
+        axs.axvline(period_limit, color=plot_colors_rgb[3], linestyle='dashdot', label=f'Minimum $P_{{max}}$', linewidth=2)
+
     axs.legend(fontsize=12, loc=legend_loc)
     axs.grid(True)
+    axs.figure.canvas.draw()  # ← Move here, AFTER all formatting
+
 
 def plot_lightcurve_and_periodogram(planet, 
                                     lc_list, 
                                     periodogram_list, 
                                     sector_list, 
-                                    flux_string='raw', root=None):
+                                    flux_string='raw', root=None, 
+                                    xlim=[8,20], log=True, period_limits=[17.52, 18.72]):
 
     # Create the figure
     fig = plt.figure(figsize=(20, 12))        
@@ -133,11 +148,16 @@ def plot_lightcurve_and_periodogram(planet,
                         color=color)
 
     for i, periodogram in enumerate(periodogram_list):
+        if i < 2:
+            periodogram_limit = period_limits[0]
+        else:
+            periodogram_limit = period_limits[1]
         plot_periodogram(axs[i + len(lc_list)], periodogram['frequency'], 
                             periodogram['power'], 
                             periodogram['false_alarm_levels'], 
-                            color=color, probabilities=[10, 1, 0.01])
-        axs[i + len(lc_list)].set_xlim(8,20)
+                            color=color, probabilities=[10, 1, 0.01], 
+                            xlim=xlim, log=log, period_limit=periodogram_limit)
+        axs[i + len(lc_list)].set_xlim(xlim[0], xlim[1])
 
     plt.tight_layout()
 
