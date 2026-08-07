@@ -3,12 +3,49 @@ import emcee
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy.stats import norm, truncnorm
-from scipy.optimize import minimize_scalar, root_scalar
+from scipy.stats import norm, truncnorm, skewnorm
+from scipy.optimize import minimize_scalar, root_scalar, minimize
 
 from bootstrap import classify_posterior
 from fullsector import debug_print
 from wind_equations import RHS, U_PHI, sigma
+
+def fit_skewnorm(lower, upper, posterior_mean):
+    """
+    Fit skewnorm parameters (a, loc, scale) to match:
+      - Lower bound (e.g., 2.5th percentile)
+      - Upper bound (e.g., 97.5th percentile)  
+      - Posterior mean
+    """
+    
+    def objective(params):
+        a, loc, scale = params
+        
+        # Avoid invalid parameter ranges
+        if scale <= 0:
+            return 1e10
+        
+        dist = skewnorm(a, loc=loc, scale=scale)
+        
+        # Compute predicted values
+        pred_mean = dist.mean()
+        pred_lower = dist.ppf(0.025)  # 2.5th percentile
+        pred_upper = dist.ppf(0.975)  # 97.5th percentile
+        
+        # Error: sum of squared deviations
+        error = (pred_mean - posterior_mean)**2 + \
+                (pred_lower - lower)**2 + \
+                (pred_upper - upper)**2
+        
+        return error
+    
+    # Initial guess: assume roughly centered, mild skew
+    x0 = [0.5, posterior_mean, (upper - lower) / 4]
+    
+    result = minimize(objective, x0, method='Nelder-Mead')
+    
+    a_fit, loc_fit, scale_fit = result.x
+    return skewnorm(a_fit, loc=loc_fit, scale=scale_fit)
 
 # Log-likelihood function
 # phi radians, f_obs 1/days, f_err 1/days, model_eqn m/s
@@ -25,19 +62,37 @@ def log_prior(phi):
     return -np.inf
 
 # Full log-probability
-def log_probability(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn):
+def log_probability(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, skew_dist=None):
     lp = log_prior(phi)
     if not np.isfinite(lp):
         return -np.inf
-    return lp + log_likelihood(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn)
+    
+    # Sample sigma_f from skewnorm
+    if skew_dist is not None:
+        sigma_f = skew_dist.rvs()
+    else:
+        sigma_f = f_err  
+    
+    return lp + log_likelihood(phi, f_obs, sigma_f, model_eqn, sigma_eqn, freq_eqn)
 
 # Run the sampler
 def mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_walkers=32, n_steps=5000):
+
+    if f_err.ndim == 2:
+        skew_dist = fit_skewnorm(f_err[0], f_err[1], f_obs)
+    else:
+        skew_dist = None
+
     ndim = 1
     # Initialize walkers anywhere from 0 to 90 degrees
     initial_pos = np.random.uniform(0.1, np.pi/2 - 0.1, size=(n_walkers, ndim))
 
-    sampler = emcee.EnsembleSampler(n_walkers, ndim, log_probability, args=(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn))
+    sampler = emcee.EnsembleSampler(n_walkers, 
+                                    ndim, 
+                                    log_probability, 
+                                    args=(f_obs, f_err, 
+                                        model_eqn, sigma_eqn, 
+                                        freq_eqn, skew_dist))
     
     sampler.run_mcmc(initial_pos, n_steps, progress=True)
 
@@ -314,7 +369,7 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
 
         print("Processing wind equation:", wind_eqn_strings[i])
         for f_obs, f_err in zip(means_filtered, stds_filtered):
-
+            # f_err = np.array(f_err, dtype=float)  # ensure numeric
             print("Frequency, error:", f_obs, f_err)
             
             sampler = mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_steps=n_steps)
@@ -324,7 +379,7 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
 
             # Convert to degrees 
             phi_deg = np.array(np.degrees(phi_samples))
-
+            print(phi_deg.shape)
             print("Median latitude (deg):", np.median(phi_deg))
             phi_arr.append(phi_deg)
         phi_super_arr.append(phi_arr)

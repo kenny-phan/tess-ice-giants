@@ -53,45 +53,41 @@ subfap = subsectors['subfap']
 
 nsec, nsub = subtimes.shape
 
-# bootstrap_results = np.empty((nsec, nsub), dtype=object)
-# for sec in range(nsec):
-#     print(f"Bootstrapping sector {sec+1}/{nsec}...")
-#     for sub in range(nsub):
-#         print(f"Bootstrapping subsector {sub+1}/{nsub}...")
-#         peak_periods = bootstrap_peak_periods(subtimes[sec, sub], 
-#                                               subfluxes[sec, sub], 
-#                                               fap_level=0.01, 
-#                                               n_bootstraps=10000, boot_percent=0.8, 
-#                                               min_period=5/24, max_period=25/24, 
-#                                               n_freqs=1000, plot=True, n_plot=100)
-#         bootstrap_results[sec, sub] = peak_periods
+bootstrap_results = np.empty((nsec, nsub), dtype=object)
+for sec in range(nsec):
+    print(f"Bootstrapping sector {sec+1}/{nsec}...")
+    for sub in range(nsub):
+        print(f"Bootstrapping subsector {sub+1}/{nsub}...")
+        peak_periods = bootstrap_peak_periods(subtimes[sec, sub], 
+                                              subfluxes[sec, sub], 
+                                              fap_level=0.01, 
+                                              n_bootstraps=10000, boot_percent=0.8, 
+                                              min_period=5/24, max_period=25/24, 
+                                              n_freqs=1000, plot=True, n_plot=100)
+        bootstrap_results[sec, sub] = peak_periods
 
-# np.savez(root + 'subsectors/bootstrap_results.npz', bootstrap_results=bootstrap_results, allow_pickle=True)
+np.savez(root + 'subsectors/bootstrap_results.npz', bootstrap_results=bootstrap_results, allow_pickle=True)
 
 # # run cluster ~10min
-# bootstrap_results = np.load(root + 'subsectors/bootstrap_results.npz', allow_pickle=True)['bootstrap_results']
+nsec, nsub = bootstrap_results.shape
+cluster_results = np.empty((nsec, nsub), dtype=object)
+for sec in range(nsec):
+    print(f"Processing sector {sec}/{nsec}...")
+    for sub in range(nsub):
+        peaks = bootstrap_results[sec, sub]
+        labels, all_means, all_stds = cluster_peaks(peaks, 
+                                                    eps=0.005, 
+                                                    plot=True,
+                                                    allow_skew_truc=True,
+                                                    skew_threshold=0.9,
+                                                    min_prominence=0.8, 
+                                                    n_bootstraps=10000,
+                                                    pass_frac=0.8)
+        cluster_results[sec, sub] = (labels, all_means, all_stds)
 
-# from bootstrap import cluster_peaks
-# nsec, nsub = bootstrap_results.shape
-# cluster_results = np.empty((nsec, nsub), dtype=object)
-# for sec in range(nsec):
-#     print(f"Processing sector {sec}/{nsec}...")
-#     for sub in range(nsub):
-#         peaks = bootstrap_results[sec, sub]
-#         labels, all_means, all_stds = cluster_peaks(peaks, 
-#                                                     eps=0.005, 
-#                                                     plot=True,
-#                                                     allow_skew_truc=True,
-#                                                     skew_threshold=0.9,
-#                                                     min_prominence=0.8, 
-#                                                     n_bootstraps=10000,
-#                                                     pass_frac=0.8)
-#         cluster_results[sec, sub] = (labels, all_means, all_stds)
-
-# np.savez(root + 'subsectors/cluster_results.npz', cluster_results=cluster_results, allow_pickle=True)
+np.savez(root + 'subsectors/cluster_results.npz', cluster_results=cluster_results, allow_pickle=True)
 
 # run mcmc
-from wind_equations import *
 cluster_results = np.load(root + 'subsectors/cluster_results.npz', allow_pickle=True)['cluster_results']
 
 ur_wind_eqns = [sromovsky2012_odd_N, sromovsky2012_odd_S, sromovsky2015_N, sromovsky2015_S]

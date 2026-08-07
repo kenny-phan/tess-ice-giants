@@ -299,3 +299,39 @@ def expand_by_time_ranges(new_power, time_ranges, scale=10):
     stretched_rows = [np.repeat(row[np.newaxis, :], n, axis=0) for row, n in zip(new_power, n_cols)]
     expanded_power = np.vstack(stretched_rows)
     return expanded_power.T, stretched_rows  # transpose so shape = (N_periods, total_time_pixels)
+
+
+def sort_lat_std(latitudes, standard_deviations):
+    sorted_latitudes = np.empty_like(latitudes, dtype=object)
+    sorted_standard_deviations = np.empty_like(standard_deviations, dtype=object)
+    for j in range(latitudes.shape[0]):
+        lat_arr = latitudes[j, :]
+        std_arr = standard_deviations[j, :]
+        sorted_lat_arr = np.empty_like(lat_arr)
+        sorted_std_arr = np.empty_like(std_arr)
+
+        for k, (sublat, substd) in enumerate(zip(lat_arr, std_arr)):
+            sorted_indices = [np.argsort(sublat[i]) for i in range(len(sublat))]
+            sublat_sorted = [sublat[i][sorted_indices[i]] for i in range(len(sublat))]
+            substd_sorted = [substd[i][sorted_indices[i]] for i in range(len(substd))]
+            sorted_lat_arr[k] = sublat_sorted
+            sorted_std_arr[k] = substd_sorted
+
+        sorted_latitudes[j, :] = sorted_lat_arr
+        sorted_standard_deviations[j, :] = sorted_std_arr
+
+    return sorted_latitudes, sorted_standard_deviations
+
+
+def lat_std_per_eqn(sorted_latitudes, sorted_standard_deviations, eqnidx, secidx):
+    slat = sorted_latitudes[secidx, :]
+    sstd = sorted_standard_deviations[secidx, :]
+    thissec_latitudes, thissec_stds = [], []
+    for lat, std in zip(slat, sstd):
+        if lat[eqnidx] is not None and len(lat[eqnidx]) > 0:
+            thissec_latitudes.append(lat[eqnidx][0])
+            thissec_stds.append(std[eqnidx][0])
+
+    return np.array(thissec_latitudes), thissec_stds
+
+

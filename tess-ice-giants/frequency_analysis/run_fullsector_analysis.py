@@ -103,7 +103,7 @@ nep_wind_eqn_strings = ["sromovsky1993_four", "sromovsky1993_six", "tollefson201
 # planet data
 uRe = 25559 * 1000
 uRp = 24973 * 1000
-uP = -17.247864
+uP = 17.247864
 uRe_err = 4000
 uRp_err = 20000
 uP_err = 0.00001

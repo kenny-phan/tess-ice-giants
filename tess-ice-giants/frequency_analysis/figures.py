@@ -323,118 +323,133 @@ def plot_uranus_equations(ax, phi, colors, linewidth=2):
     s15 = make_sromovsky2015()
     ax.plot(s15(phi), phi * 180 / np.pi, label="Sromovsky+ (2015)", color=colors[1], linewidth=linewidth)
 
-def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors, 
-                          title, planet, sector=None, vmin_percentile=None, vmax_percentile=None):
-    binary = sns.color_palette("viridis", as_cmap=True)
-    #plt.style.use('viridis')
+def plot_subsec_latsols(ax, subseclat, subsecstd, eqn, 
+                        flip=False, fmt='o', 
+                        color='xkcd:light blue',
+                        alpha=0.5):
+    for lat, std in zip(subseclat, subsecstd):
+        std = np.reshape(std, (-1, 1))
 
-    phi = np.linspace(-np.pi/2, np.pi/2, 361)
+        if flip:
+            lat = -lat
+        ax.errorbar(eqn(np.radians(lat)), 
+                            lat, 
+                            yerr=std, 
+                            fmt=fmt, color=color,
+                            capsize=3, alpha=alpha)
 
-    fig = plt.figure(figsize=(10, 6))
-    if sector is not None:
-        fig.suptitle(f"Sector {sector}, {title}", fontsize=16, x=0.05, horizontalalignment='left')
+# def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors, 
+#                           title, planet, sector=None, vmin_percentile=None, vmax_percentile=None):
+#     binary = sns.color_palette("viridis", as_cmap=True)
+#     #plt.style.use('viridis')
 
-    gs = gridspec.GridSpec(2, 6, height_ratios=[1, 1])
+#     phi = np.linspace(-np.pi/2, np.pi/2, 361)
 
-    ax = fig.add_subplot(gs[0:2, 0:6])
-    ax.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
+#     fig = plt.figure(figsize=(10, 6))
+#     if sector is not None:
+#         fig.suptitle(f"Sector {sector}, {title}", fontsize=16, x=0.05, horizontalalignment='left')
 
-    if planet == "Neptune":
-        # phi = np.linspace(-np.pi/2, 0, 181)
-        lat, stds = np.array(lats), np.array(stds)
-        plot_neptune_equations(ax, phi, plot_colors, h_band=False)
-        for i, equation in enumerate(eqns):
-            plot_lat_solutions(ax, lat[i], stds[i], equation, 42, plot_colors[i])
+#     gs = gridspec.GridSpec(2, 6, height_ratios=[1, 1])
 
-        ax.set_ylim(-90, 90)
-        ax.set_xlim(-500, 400)
+#     ax = fig.add_subplot(gs[0:2, 0:6])
+#     ax.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+#     divider = make_axes_locatable(ax)
+#     cax = divider.append_axes("right", size="5%", pad=0.05)
 
-    elif planet == "Uranus":
-        plot_uranus_equations(ax, phi, plot_colors)
-        markers = ["o", "^", "s"]
-        for j, lat in enumerate(lats):
-            for i, equation in enumerate(eqns):
-                plot_lat_solutions(ax, lat[i], stds[j][i], equation, 42, plot_colors[i], even=False, marker=markers[j])
+#     if planet == "Neptune":
+#         # phi = np.linspace(-np.pi/2, 0, 181)
+#         lat, stds = np.array(lats), np.array(stds)
+#         plot_neptune_equations(ax, phi, plot_colors, h_band=False)
+#         for i, equation in enumerate(eqns):
+#             plot_lat_solutions(ax, lat[i], stds[i], equation, 42, plot_colors[i])
 
-        ax.set_ylim(-90,90)
-        ax.set_xlim(-100, 300)
+#         ax.set_ylim(-90, 90)
+#         ax.set_xlim(-500, 400)
 
-    ax.set_xlabel(r"Wind Speed $[ms^{-1}]$")
-    ax.xaxis.set_label_position('top') 
+#     elif planet == "Uranus":
+#         plot_uranus_equations(ax, phi, plot_colors)
+#         markers = ["o", "^", "s"]
+#         for j, lat in enumerate(lats):
+#             for i, equation in enumerate(eqns):
+#                 plot_lat_solutions(ax, lat[i], stds[j][i], equation, 42, plot_colors[i], even=False, marker=markers[j])
 
-    xlim, ylim = ax.get_xlim(), ax.get_ylim()
+#         ax.set_ylim(-90,90)
+#         ax.set_xlim(-100, 300)
 
-    x1n = np.linspace(-180, 181, 30)
+#     ax.set_xlabel(r"Wind Speed $[ms^{-1}]$")
+#     ax.xaxis.set_label_position('top') 
 
-    def forward(x):
-        return np.interp(x, x1n, np.linspace(xlim[0], xlim[1], 30))
+#     xlim, ylim = ax.get_xlim(), ax.get_ylim()
 
-    def inverse(x):
-        return np.interp(x, np.linspace(xlim[0], xlim[1], 30), x1n)
+#     x1n = np.linspace(-180, 181, 30)
 
-    if planet == "Neptune":
-        # mosaic_data = mosaic_data[180:360, :]
-        mosaic_data = mosaic_data/np.nanmean(mosaic_data)
-        im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
-                       vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
+#     def forward(x):
+#         return np.interp(x, x1n, np.linspace(xlim[0], xlim[1], 30))
+
+#     def inverse(x):
+#         return np.interp(x, np.linspace(xlim[0], xlim[1], 30), x1n)
+
+#     if planet == "Neptune":
+#         # mosaic_data = mosaic_data[180:360, :]
+#         mosaic_data = mosaic_data/np.nanmean(mosaic_data)
+#         im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
+#                        vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
         
-        ax.legend(loc='center right')
-    elif planet == "Uranus":
-        # mosaic_data = mosaic_data[0:180, :]
-        mosaic_data = mosaic_data/np.nanmean(mosaic_data)
-        im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
-                       vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
-        ax.legend(loc='center right')
+#         ax.legend(loc='center right')
+#     elif planet == "Uranus":
+#         # mosaic_data = mosaic_data[0:180, :]
+#         mosaic_data = mosaic_data/np.nanmean(mosaic_data)
+#         im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
+#                        vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
+#         ax.legend(loc='center right')
 
-    fig.colorbar(im, cax=cax, label=r"Normalized Flux $[e^{-}s^{-1}]$")
-    ax.set_ylabel(r"Latitude $[{^\circ}]$")
+#     fig.colorbar(im, cax=cax, label=r"Normalized Flux $[e^{-}s^{-1}]$")
+#     ax.set_ylabel(r"Latitude $[{^\circ}]$")
 
-    secax = ax.secondary_xaxis("bottom", functions=(inverse, forward))
+#     secax = ax.secondary_xaxis("bottom", functions=(inverse, forward))
 
-    secax.set_xticks(np.linspace(-180, 180, 13))  # longitude ticks
-    secax.set_xticklabels([f"{val:.0f}" for val in np.linspace(-180, 180, 13)])
-    secax.set_xlabel(r"Longitude $[{^\circ}]$")
+#     secax.set_xticks(np.linspace(-180, 180, 13))  # longitude ticks
+#     secax.set_xticklabels([f"{val:.0f}" for val in np.linspace(-180, 180, 13)])
+#     secax.set_xlabel(r"Longitude $[{^\circ}]$")
 
-    if title:
-        fig.suptitle(title, fontsize=36/2)
-    # return all_bright_points
+#     if title:
+#         fig.suptitle(title, fontsize=36/2)
+#     # return all_bright_points
 
-def plot_summed_mosaics(summed_data, eqns, lats, stds, plot_colors, 
-                        planet, sector=None, save=False, log=True, clip_percentile=97, 
-                        gradient=False, vmin_percentile=None, vmax_percentile=None):
-    # summed_data = None
-    # for dir in directories:
-    #     for file in os.listdir(dir):
-    #         if file.endswith('.fits'):
-    #             #print(file)
-    #             hdul = fits.open(os.path.join(dir, file))
-    #             data = hdul[0].data
-    #             summed_data = data if summed_data is None else summed_data + data
-    #             hdul.close()
+# def plot_summed_mosaics(summed_data, eqns, lats, stds, plot_colors, 
+#                         planet, sector=None, save=False, log=True, clip_percentile=97, 
+#                         gradient=False, vmin_percentile=None, vmax_percentile=None):
+#     # summed_data = None
+#     # for dir in directories:
+#     #     for file in os.listdir(dir):
+#     #         if file.endswith('.fits'):
+#     #             #print(file)
+#     #             hdul = fits.open(os.path.join(dir, file))
+#     #             data = hdul[0].data
+#     #             summed_data = data if summed_data is None else summed_data + data
+#     #             hdul.close()
 
-    if gradient:
-        lat_gradient = np.abs(np.gradient(summed_data)[1])
-    else: 
-        lat_gradient = summed_data
+#     if gradient:
+#         lat_gradient = np.abs(np.gradient(summed_data)[1])
+#     else: 
+#         lat_gradient = summed_data
         
-    #clip lat_gradient at 99th percentile for better visualization
-    lat_gradient_clipped = np.clip(lat_gradient, 0, np.percentile(lat_gradient, clip_percentile))
+#     #clip lat_gradient at 99th percentile for better visualization
+#     lat_gradient_clipped = np.clip(lat_gradient, 0, np.percentile(lat_gradient, clip_percentile))
 
-    # set max values of lat_gradient to the mean 
-    lat_gradient_clipped[lat_gradient_clipped == np.percentile(lat_gradient, clip_percentile)] = np.median(lat_gradient)
+#     # set max values of lat_gradient to the mean 
+#     lat_gradient_clipped[lat_gradient_clipped == np.percentile(lat_gradient, clip_percentile)] = np.median(lat_gradient)
 
-    title = None # (f"{planet} {sector}")
-    plot_mosaic_latitudes(lat_gradient_clipped, eqns, lats, stds, 
-                          plot_colors, planet=planet, 
-                          title=title, sector=None,vmin_percentile=vmin_percentile, vmax_percentile=vmax_percentile)
+#     title = None # (f"{planet} {sector}")
+#     plot_mosaic_latitudes(lat_gradient_clipped, eqns, lats, stds, 
+#                           plot_colors, planet=planet, 
+#                           title=title, sector=None,vmin_percentile=vmin_percentile, vmax_percentile=vmax_percentile)
     
-    plt.tight_layout()
-    if save:
-        plt.savefig(f"{planet}_{sector}_opal.png", transparent=True, dpi=600)
-    else:
-        plt.show()
+#     plt.tight_layout()
+#     if save:
+#         plt.savefig(f"{planet}_{sector}_opal.png", transparent=True, dpi=600)
+#     else:
+#         plt.show()
 
     # return bright_points
 
