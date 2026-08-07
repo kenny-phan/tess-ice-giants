@@ -480,7 +480,6 @@ def plot_split_periodograms(axs,
     axs.set_xlim(xlim[0], xlim[1])
     axs.set_xlabel("Period [hours]")
 
-
 def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, min_per, max_per,
                  btjd_offset=2400, round_decimals=1,
                  gap_factor=3, vmin=0, vmax=1, output_table=False,
@@ -495,9 +494,8 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
     # Insert a dummy bin if there's a large data gap
     bin_starts, bin_ends, gap_idx = insert_gap_bin(bin_starts, bin_ends,
                                                    gap_factor=gap_factor)
-
-    bin_starts = bin_starts + [bin_ends[-1]]
-
+    insert_bins = np.insert(bin_starts, gap_idx, bin_ends[gap_idx - 1])
+    bin_starts =  np.concatenate([insert_bins, [bin_ends[-1]]])
     new_power = []
     time_ranges = []
     tot_time = 0
@@ -516,8 +514,8 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
         mask = peak_frequencies > max_frequency
         peaks_below_limit, power_below_limit = peak_frequencies[mask], power_vals[mask]
 
-        if len(peaks_below_limit) == 0:
-            continue
+        # if len(peaks_below_limit) == 0:
+        #     continue
         
         peak_freqs.append(peaks_below_limit[np.argmax(power_below_limit)])
         period = 24 / peaks_below_limit[np.argmax(power_below_limit)]
@@ -554,36 +552,37 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
     print(f"TOTAL BIN TIME: {tot_time}")
     new_power = np.array(new_power)
     time_ranges = np.array(time_ranges)
+    print(f"time ranges: {time_ranges}")
 
-    if gap_idx is not None:
-        # time_ranges = np.insert(time_ranges, gap_idx, 2)
-        # bin_starts = np.insert(bin_starts, gap_idx, bin_starts[gap_idx - 1])
+    print(time_ranges[gap_idx - 1], time_ranges[gap_idx])
+    print(bin_starts[gap_idx - 1], bin_starts[gap_idx], bin_starts[gap_idx + 1])
+    dummy_row = np.full_like(new_power[0], np.nan)  # NaN instead of value
+    gap_power = np.insert(new_power, gap_idx, dummy_row, axis=0)
 
-        dummy_row = np.full_like(new_power[0], np.nan)  # NaN instead of value
-        new_power = np.insert(new_power, gap_idx, dummy_row, axis=0)
+    dummy_gap = bin_starts[gap_idx] - bin_starts[gap_idx-1]
+    gap_time_ranges = np.insert(time_ranges, gap_idx, dummy_gap)  # Insert a zero for the gap
 
-    new_power, stretched_rows = expand_by_time_ranges(new_power, time_ranges, scale=20)
-
-    expanded_bin_starts = [bin_starts[0]]
-    for i in range(len(stretched_rows)):
-        next_time = expanded_bin_starts[-1] + time_ranges[i]
-        expanded_bin_starts.append(next_time)
-    expanded_bin_starts = np.array(expanded_bin_starts)
+    stretch_power, stretched_rows = expand_by_time_ranges(gap_power, gap_time_ranges, scale=20)
+    print(gap_power.shape)
+    print(stretch_power.shape)
+    print(gap_time_ranges.shape)
+    print(f"stretched_rows: {len(stretched_rows)}")
 
     # Create colormap that shows NaN as white
     cmap = plt.cm.coolwarm.copy()
     cmap.set_bad(color="white")
 
-    axs.imshow(new_power, interpolation='nearest', aspect='auto',
+    axs.imshow(stretch_power, interpolation='nearest', aspect='auto',
                     origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
 
     period_range = np.arange(xlim[0], xlim[1] + 1, 2)
     axs.set_yticks(np.linspace(0, 99, len(period_range)), period_range, fontsize=12)
     x_ticks = np.cumsum([0] + [s.shape[0] for s in stretched_rows])
-    x_labels = [f"{t:.1f}" for t in expanded_bin_starts]
+    x_labels = [f"{t:.1f}" for t in bin_starts]
 
-    print(x_ticks)
-    
+    print(f"x_ticks: {x_ticks}")
+    print(f"x_labels: {x_labels}")
+
     axs.set_xlabel(f"Days [BTJD - {btjd_offset}]")
     # axs.set_title(title)
     axs.set_xticks(x_ticks)
@@ -595,7 +594,7 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
                  rotation=90, fontsize=18, color="black",
                  bbox=dict(facecolor="white", edgecolor="none", alpha=0.8))
 
-    return np.array(peak_freqs), np.array(periods), np.array(new_power), np.array(time_ranges), stretched_rows, expanded_bin_starts
+    return np.array(peak_freqs), np.array(periods), np.array(stretch_power), np.array(gap_time_ranges), stretched_rows
 
 def plot_subsector_heatmap(planet, 
                            subtimes, subfluxes, 

@@ -267,8 +267,8 @@ def insert_gap_bin(bin_starts, bin_ends, gap_factor=3):
     if gaps[large_gap_idx] > gap_factor * median_gap:
         # Place dummy bin at midpoint of large gap
         midpoint = (bin_ends[large_gap_idx]) 
-        new_starts = bin_starts[:large_gap_idx+1] + [midpoint] + bin_starts[large_gap_idx+1:]
-        new_ends   = bin_ends[:large_gap_idx+1]   + [midpoint] + bin_ends[large_gap_idx+1:]
+        new_starts = bin_starts[:large_gap_idx+1] + bin_starts[large_gap_idx+1:]
+        new_ends   = bin_ends[:large_gap_idx+1]  + bin_ends[large_gap_idx+1:]
         return new_starts, new_ends, large_gap_idx+1
     else:
         return bin_starts, bin_ends, None
@@ -294,7 +294,7 @@ def expand_by_time_ranges(new_power, time_ranges, scale=10):
     # Normalize to mean width = 1, then scale up for better resolution
     norm = np.mean(time_ranges)
     n_cols = np.round((time_ranges / norm) * scale).astype(int)
-    n_cols[n_cols < 1] = 1  # ensure at least one column per bin
+    # n_cols[n_cols < 1] = 1  # ensure at least one column per bin
 
     stretched_rows = [np.repeat(row[np.newaxis, :], n, axis=0) for row, n in zip(new_power, n_cols)]
     expanded_power = np.vstack(stretched_rows)
