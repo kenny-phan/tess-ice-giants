@@ -235,17 +235,22 @@ def merge_pointings(dir1, dir2):
     return div_stack, data_stack
 
 def take_latsol_with_largest_std(lat_array, std_array):
-    for i in range(len(lat_array)): # for every wind equation
-        for j in range(len(lat_array[i])): # for every solution
-            if isinstance(lat_array[i][j], np.ndarray) and len(lat_array[i][j]) == 2:
+    if len(lat_array.shape) > 2:
+        # Squeeze out any single-length dimensions to handle both 2D and 3D inputs
+        lat_array = np.squeeze(lat_array)
+        std_array = np.squeeze(std_array)
+    for i in range(len(lat_array)):  # for every wind equation
+        for j in range(len(lat_array[i])):  # for every solution
+            if isinstance(lat_array[i][j], (list, tuple, np.ndarray)) and len(lat_array[i][j]) == 2:
                 if std_array[i][j][0] > std_array[i][j][1]:
                     lat_array[i][j] = lat_array[i][j][0]
                     std_array[i][j] = std_array[i][j][0]
                 else:
                     lat_array[i][j] = lat_array[i][j][1]
                     std_array[i][j] = std_array[i][j][1]
-
+    
     return lat_array, std_array
+
 
 def sort_ur_to_eqns(lat_arr, std_arr):
     new_lat_arr = np.vstack((np.concatenate(lat_arr[0:2]), np.concatenate(lat_arr[2:4])))

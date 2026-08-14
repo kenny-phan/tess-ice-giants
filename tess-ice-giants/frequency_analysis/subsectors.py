@@ -312,6 +312,7 @@ def sort_lat_std(latitudes, standard_deviations):
 
         for k, (sublat, substd) in enumerate(zip(lat_arr, std_arr)):
             sorted_indices = [np.argsort(sublat[i]) for i in range(len(sublat))]
+            print(sublat)
             sublat_sorted = [sublat[i][sorted_indices[i]] for i in range(len(sublat))]
             substd_sorted = [substd[i][sorted_indices[i]] for i in range(len(substd))]
             sorted_lat_arr[k] = sublat_sorted
