@@ -25,7 +25,7 @@ plt.rcParams.update({'axes.linewidth' : 1.5,
                      'xtick.minor.width' : 1.5,
                      'xtick.labelsize': 12, 
                      'ytick.labelsize': 12,
-                     'axes.labelsize': 18,
+                     'axes.labelsize': 20,
                      'axes.labelpad' : 5,
                      'axes.titlesize' : 24,
                      'axes.titlepad' : 10,
@@ -93,9 +93,10 @@ def plot_periodogram(axs, frequency, power, fap_stack, color,
         # OPTIONAL: Only use NullFormatter if you really don't want labels
         # axs.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
     if period_limit is not None:
-        axs.axvline(period_limit, color=plot_colors_rgb[3], linestyle='dashdot', label=f'Minimum $P_{{max}}$', linewidth=2)
+        axs.axvspan(axs.get_xlim()[0], period_limit, alpha=0.33, color=plot_colors_rgb[2], label='Feature Candidates')
+        axs.axvline(period_limit, color=plot_colors_rgb[3], linestyle='dashdot', label=f'Minimum Period Limit', linewidth=2)
 
-    axs.legend(fontsize=12, loc=legend_loc)
+    axs.legend(fontsize=12, loc=legend_loc, prop={'size': 14})
     axs.grid(True)
     axs.figure.canvas.draw()  # ← Move here, AFTER all formatting
 
@@ -162,7 +163,7 @@ def plot_lightcurve_and_periodogram(planet,
     plt.tight_layout()
 
     if root is not None:
-        plt.savefig(root + f"{planet}.png", transparent=True, dpi=1000)
+        plt.savefig(root + f"{planet}.png", transparent=True, dpi=200)
     else: 
         plt.show()
 
@@ -257,7 +258,7 @@ def sort_ur_to_eqns(lat_arr, std_arr):
     new_std_arr = np.vstack((np.concatenate(std_arr[0:2]), np.concatenate(std_arr[2:4])))
     return new_lat_arr, new_std_arr
 
-def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False, even=True, marker='o'):
+def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False, even=True, marker='o', markersize=5):
     for i, latitude in enumerate(latitudes):
         if label:
             label = f"Sector {sector}" if i == 0 else None
@@ -284,6 +285,7 @@ def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False
             color=color,
             capsize=3,
             label=label,
+            markersize=markersize
         )
 
         if even:
@@ -295,6 +297,7 @@ def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False
                 fmt=marker,
                 color=color,
                 capsize=3,
+                markersize=markersize
             )
 
 def make_rows_negative(lat_array, rows_to_negate):
@@ -330,9 +333,9 @@ def plot_uranus_equations(ax, phi, colors, linewidth=2):
 
 def plot_subsec_latsols(ax, subseclat, subsecstd, eqn, 
                         flip=False, fmt='o', 
-                        color='xkcd:light blue',
-                        alpha=0.5):
-    for lat, std in zip(subseclat, subsecstd):
+                        colors=['xkcd:light blue']*10,
+                        alpha=0.5, markersize=5):
+    for lat, std, color in zip(subseclat, subsecstd, colors):
         std = np.reshape(std, (-1, 1))
 
         if flip:
@@ -341,7 +344,7 @@ def plot_subsec_latsols(ax, subseclat, subsecstd, eqn,
                             lat, 
                             yerr=std, 
                             fmt=fmt, color=color,
-                            capsize=3, alpha=alpha)
+                            capsize=3, alpha=alpha, markersize=markersize)
 
 # def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors, 
 #                           title, planet, sector=None, vmin_percentile=None, vmax_percentile=None):
