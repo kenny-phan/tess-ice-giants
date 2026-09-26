@@ -70,7 +70,7 @@ def make_periodogram(time, flux,
 
     false_alarm_levels = np.array(false_alarm_levels)
     
-    return frequency, power, false_alarm_levels
+    return frequency, power, false_alarm_levels, ls
 
 def get_peak_frequencies(frequency, power, false_alarm_array):
     peaks, _ = find_peaks(power, height=false_alarm_array)
@@ -82,15 +82,19 @@ def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='de
                       samples_per_peak=10):
     
     for i, sector_data in tqdm(enumerate(sector_data_list)):
-        frequency, power, false_alarm_levels = make_periodogram(sector_data['time'], sector_data[flux_type],
+        frequency, power, false_alarm_levels, ls = make_periodogram(sector_data['time'], sector_data[flux_type],
                                                                 minimum_frequency=min_freq_arr[i], 
                                                                 maximum_frequency=max_freq_arr[i],
                                                                 samples_per_peak=samples_per_peak)
         peak_freqs, peak_pows = get_peak_frequencies(frequency, power, false_alarm_levels[fap_idx])
+        print('getting FAP for all peaks')
+        peak_fap = np.empty_like(peak_pows)
+        for j, peak in enumerate(peak_pows):
+            peak_fap[j] = ls.false_alarm_probability(peak)
         # print(false_alarm_levels)
         np.savez(root + f'{sector_data_strings[i]}_periodogram.npz', 
                 frequency=frequency, power=power, false_alarm_levels=false_alarm_levels,
-                peak_freqs=peak_freqs, peak_pows=peak_pows)    
+                peak_freqs=peak_freqs, peak_pows=peak_pows, peak_fap=peak_fap)    
     
 def group_and_average(arr1, arr2, mean=True):
     """

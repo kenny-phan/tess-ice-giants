@@ -176,26 +176,38 @@ def split_periodogram(time_stack, flux_stack,
                       bootstrap=False, n_bootstrap=1000, 
                       fap_level=0.01):
 
-    freq_stack, power_stack, fap_stack, peak_stack = [], [], [], []
+    freq_stack, power_stack, fap_stack, peak_stack, peak_fap_stack = [], [], [], [], []
 
     for i in range(len(time_stack)):
         baseline = time_stack[i][-1] - time_stack[i][0]
         min_freq = 1/(baseline/2)
         frequency = np.linspace(min_freq, max_freq, freq_array_size)
         _, _, detrended = linear_detrend(time_stack[i], flux_stack[i])
-        power = LombScargle(time_stack[i], detrended).power(frequency)
+        ls = LombScargle(time_stack[i], detrended)
+        power = ls.power(frequency)
 
         if bootstrap:
-            fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level, 
+            fap = ls.false_alarm_level(fap_level, 
                                                                           method='bootstrap', 
                                                                           method_kwds=dict(n_bootstraps=n_bootstrap))
         else: 
-            fap = LombScargle(time_stack[i], detrended).false_alarm_level(fap_level)
+            fap = ls.false_alarm_level(fap_level)
 
-        peaks, _ = get_peak_frequencies(frequency, power, [fap])
+        peaks, peak_pows = get_peak_frequencies(frequency, power, [fap])
+
+        peak_fap = np.copy(peaks)
 
         if len(peaks) > 0:
             peak_stack.append(peaks)
+
+            for j, peak_pow in enumerate(peak_pows):
+                peak_fap[j] = ls.false_alarm_probability(peak_pow)
+
+            peak_fap_stack.append(peak_fap)
+
+        else:
+            peak_stack.append([])
+            peak_fap_stack.append([])
 
         freq_stack.append(frequency)
         power_stack.append(power)
@@ -204,19 +216,20 @@ def split_periodogram(time_stack, flux_stack,
     power_stack = np.array(power_stack)
     fap_stack = np.array(fap_stack)
     freq_stack = np.array(freq_stack)
-    return freq_stack, power_stack, fap_stack, peak_stack #std_stack
+
+    return freq_stack, power_stack, fap_stack, peak_stack, peak_fap_stack #std_stack
 
 def split_data(times_list, flux_list, max_freq_arr, freq_array_size=500,
                m=50, total_segs=10, by_time=True, 
                bootstrap=False, 
                verbose=False, fap_level=0.01):
 
-    all_times, all_flux, all_freq, all_power, all_fap, all_peak = [], [], [], [], [], []
+    all_times, all_flux, all_freq, all_power, all_fap, all_peak, all_peak_fap = [], [], [], [], [], [], []
 
     for i in range(len(times_list)): 
         debug_print(verbose, f"Processing dataset {i}")
         time_stack, flux_stack = split_lightcurve(times_list[i], flux_list[i], m, total_segs, by_time=by_time)
-        frequency, power_stack, fap_stack, peak_stack = split_periodogram(time_stack, flux_stack, max_freq_arr[i], 
+        frequency, power_stack, fap_stack, peak_stack, peak_fap_stack = split_periodogram(time_stack, flux_stack, max_freq_arr[i], 
                                                                                      freq_array_size=freq_array_size,
                                                                                      bootstrap=bootstrap, fap_level=fap_level)
 
@@ -226,8 +239,9 @@ def split_data(times_list, flux_list, max_freq_arr, freq_array_size=500,
         all_fap.append(fap_stack)
         all_peak.append(peak_stack)
         all_freq.append(frequency)
+        all_peak_fap.append(peak_fap_stack)
         
-    return all_times, all_flux, all_freq, all_power, all_fap, all_peak
+    return all_times, all_flux, all_freq, all_power, all_fap, all_peak, all_peak_fap
 
 def get_bin_edges(time_stack, btjd_offset=2400, round_decimals=1):
     bin_edges = []
@@ -301,27 +315,27 @@ def expand_by_time_ranges(new_power, time_ranges, scale=10):
     return expanded_power.T, stretched_rows  # transpose so shape = (N_periods, total_time_pixels)
 
 
-def sort_lat_std(latitudes, standard_deviations):
-    sorted_latitudes = np.empty_like(latitudes, dtype=object)
-    sorted_standard_deviations = np.empty_like(standard_deviations, dtype=object)
-    for j in range(latitudes.shape[0]):
-        lat_arr = latitudes[j, :]
-        std_arr = standard_deviations[j, :]
-        sorted_lat_arr = np.empty_like(lat_arr)
-        sorted_std_arr = np.empty_like(std_arr)
+# def sort_lat_std(latitudes, standard_deviations):
+#     sorted_latitudes = np.empty_like(latitudes, dtype=object)
+#     sorted_standard_deviations = np.empty_like(standard_deviations, dtype=object)
+#     for j in range(latitudes.shape[0]):
+#         lat_arr = latitudes[j, :]
+#         std_arr = standard_deviations[j, :]
+#         sorted_lat_arr = np.empty_like(lat_arr)
+#         sorted_std_arr = np.empty_like(std_arr)
 
-        for k, (sublat, substd) in enumerate(zip(lat_arr, std_arr)):
-            sorted_indices = [np.argsort(sublat[i]) for i in range(len(sublat))]
-            print(sublat)
-            sublat_sorted = [sublat[i][sorted_indices[i]] for i in range(len(sublat))]
-            substd_sorted = [substd[i][sorted_indices[i]] for i in range(len(substd))]
-            sorted_lat_arr[k] = sublat_sorted
-            sorted_std_arr[k] = substd_sorted
+#         for k, (sublat, substd) in enumerate(zip(lat_arr, std_arr)):
+#             sorted_indices = [np.argsort(sublat[i]) for i in range(len(sublat))]
+#             print(sublat)
+#             sublat_sorted = [sublat[i][sorted_indices[i]] for i in range(len(sublat))]
+#             substd_sorted = [substd[i][sorted_indices[i]] for i in range(len(substd))]
+#             sorted_lat_arr[k] = sublat_sorted
+#             sorted_std_arr[k] = substd_sorted
 
-        sorted_latitudes[j, :] = sorted_lat_arr
-        sorted_standard_deviations[j, :] = sorted_std_arr
+#         sorted_latitudes[j, :] = sorted_lat_arr
+#         sorted_standard_deviations[j, :] = sorted_std_arr
 
-    return sorted_latitudes, sorted_standard_deviations
+#     return sorted_latitudes, sorted_standard_deviations
 
 
 def lat_std_per_eqn(sorted_latitudes, sorted_standard_deviations, eqnidx, secidx):

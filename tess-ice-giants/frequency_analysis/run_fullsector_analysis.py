@@ -26,7 +26,7 @@ crop_range_arr = [[1400, 1600], [], [], [975, 1040], []] # in pixels
 # neptune_id = '899'         
 # observer_id = '@tess'  
 
-# target_id_arr = [uranus_id, uranus_id, uranus_id, neptune_id, neptune_id]
+# hh = [uranus_id, uranus_id, uranus_id, neptune_id, neptune_id]
 # observer_id_arr = [observer_id]*5
 
 # # uranus first, then neptune

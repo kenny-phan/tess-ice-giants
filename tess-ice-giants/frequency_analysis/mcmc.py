@@ -3,49 +3,12 @@ import emcee
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy.stats import norm, truncnorm, skewnorm
-from scipy.optimize import minimize_scalar, root_scalar, minimize
+from scipy.stats import norm, truncnorm
+from scipy.optimize import minimize_scalar, root_scalar
 
 from bootstrap import classify_posterior
 from fullsector import debug_print
 from wind_equations import RHS, U_PHI, sigma
-
-def fit_skewnorm(lower, upper, posterior_mean):
-    """
-    Fit skewnorm parameters (a, loc, scale) to match:
-      - Lower bound (e.g., 2.5th percentile)
-      - Upper bound (e.g., 97.5th percentile)  
-      - Posterior mean
-    """
-    
-    def objective(params):
-        a, loc, scale = params
-        
-        # Avoid invalid parameter ranges
-        if scale <= 0:
-            return 1e10
-        
-        dist = skewnorm(a, loc=loc, scale=scale)
-        
-        # Compute predicted values
-        pred_mean = dist.mean()
-        pred_lower = dist.ppf(0.025)  # 2.5th percentile
-        pred_upper = dist.ppf(0.975)  # 97.5th percentile
-        
-        # Error: sum of squared deviations
-        error = (pred_mean - posterior_mean)**2 + \
-                (pred_lower - lower)**2 + \
-                (pred_upper - upper)**2
-        
-        return error
-    
-    # Initial guess: assume roughly centered, mild skew
-    x0 = [0.5, posterior_mean, (upper - lower) / 4]
-    
-    result = minimize(objective, x0, method='Nelder-Mead')
-    
-    a_fit, loc_fit, scale_fit = result.x
-    return skewnorm(a_fit, loc=loc_fit, scale=scale_fit)
 
 # Log-likelihood function
 # phi radians, f_obs 1/days, f_err 1/days, model_eqn m/s
@@ -62,26 +25,15 @@ def log_prior(phi):
     return -np.inf
 
 # Full log-probability
-def log_probability(phi, f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, skew_dist=None):
+def log_probability(phi, f_obs, sigma_f, model_eqn, sigma_eqn, freq_eqn):
     lp = log_prior(phi)
     if not np.isfinite(lp):
-        return -np.inf
-    
-    # Sample sigma_f from skewnorm
-    if skew_dist is not None:
-        sigma_f = skew_dist.rvs()
-    else:
-        sigma_f = f_err  
+        return -np.inf  
     
     return lp + log_likelihood(phi, f_obs, sigma_f, model_eqn, sigma_eqn, freq_eqn)
 
 # Run the sampler
 def mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_walkers=32, n_steps=5000):
-
-    if f_err.ndim == 2:
-        skew_dist = fit_skewnorm(f_err[0], f_err[1], f_obs)
-    else:
-        skew_dist = None
 
     ndim = 1
     # Initialize walkers anywhere from 0 to 90 degrees
@@ -92,7 +44,7 @@ def mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_walkers=32, n_steps=500
                                     log_probability, 
                                     args=(f_obs, f_err, 
                                         model_eqn, sigma_eqn, 
-                                        freq_eqn, skew_dist))
+                                        freq_eqn))
     
     sampler.run_mcmc(initial_pos, n_steps, progress=True)
 
@@ -180,7 +132,8 @@ def parse_classifications(distribution,
                           min_prominence=0.01,
                           plot=True, 
                           verbose=False, 
-                          allow_skew_truc=True):
+                          allow_skew_truc=True,
+                          skew_threshold=1):
     all_means = []
     all_stds = []
 
@@ -190,7 +143,8 @@ def parse_classifications(distribution,
         classification_result = classify_posterior(dist, 
                                                    boundaries=boundaries, 
                                                    min_prominence=min_prominence,
-                                                   allow_skew_truc=allow_skew_truc)
+                                                   allow_skew_truc=allow_skew_truc, 
+                                                   skew_threshold=skew_threshold)
         debug_print(verbose, f"Classification Result: {classification_result[0]}")
 
         all_means.append(classification_result[1])
@@ -240,7 +194,7 @@ def fit_all_distributions(phi_distributions_list,
                           min_prominence=0.01,
                           plot=False, 
                           print_table=True, 
-                          verbose=False):
+                          verbose=False, skew_threshold=1):
     all_latitudes = []
     all_standard_devs = []
 
@@ -249,7 +203,7 @@ def fit_all_distributions(phi_distributions_list,
         latitudes, standard_devs = parse_classifications(phi_distributions, 
                                                          min_prominence=min_prominence,
                                                          plot=plot, 
-                                                         verbose=verbose)
+                                                         verbose=verbose, skew_threshold=skew_threshold)
         all_latitudes.append(latitudes)
         all_standard_devs.append(standard_devs)
         
@@ -323,6 +277,22 @@ def get_minimum_frequency_arr(wind_eqns, Req, Rp, P):
         minimum_frequencys.append(minimum_frequency)
     return np.array(minimum_frequencys)
 
+def multiply_nested(std, mean_squared):
+    """Recursively multiply nested structures."""
+    if isinstance(std, (int, float)):
+        return std * mean_squared
+    elif isinstance(std, list):
+        return [multiply_nested(s, mean_squared) for s in std]
+    else:
+        # Handle NumPy arrays
+        return std * mean_squared
+
+def is_homogeneous(arr):
+    """Check if all elements are the same type."""
+    if not arr:
+        return True
+    return all(type(elem) == type(arr[0]) for elem in arr)
+
 def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr, 
               Re, Rp, P, Re_err, Rp_err, P_err, 
               wind_eqn_strings, sector_data_string, root, reperrs=None,
@@ -353,17 +323,29 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
 
         phi_arr = []
 
+        print(cluster_arr['matched_stds'])
+
         means = np.array(cluster_arr['matched_means'])
-        stds = np.array(cluster_arr['matched_stds'])
-        # default units of 'matched means' is days
-        # take only the peaks that are below the period limit, convert to 1/days
         means_filtered = 1 / means[means < period_limit]
 
+        clust_stds = cluster_arr['matched_stds']
+        if is_homogeneous(clust_stds):
+            stds = np.array(cluster_arr['matched_stds'])
+            stds_filtered_periods = stds[means < period_limit]
+            stds_filtered = stds_filtered_periods * (means_filtered**2)
+
+        else:
+            print('not homogeneous')
+            stds = clust_stds
+            stds_filtered_periods = [std for std, mean in zip(stds, means) if mean < period_limit]
+            stds_filtered = [multiply_nested(std, mean**2) 
+                             for std, mean in zip(stds_filtered_periods, means_filtered)]
+        # default units of 'matched means' is days
+        # take only the peaks that are below the period limit, convert to 1/days
+
         # # standard deviations, default units of days
-        stds_filtered_periods = stds[means < period_limit]
 
         # # uncertainty in frequency is related to uncertainty in period by sigma_f = (1/P^2) * sigma_P, where P is the period
-        stds_filtered = stds_filtered_periods * (means_filtered**2)
         # means_filtered = frequencies[frequencies > min_freq]
         # stds_filtered = frequency_errs[frequencies > min_freq]
 
@@ -371,19 +353,51 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
         for f_obs, f_err in zip(means_filtered, stds_filtered):
             # f_err = np.array(f_err, dtype=float)  # ensure numeric
             print("Frequency, error:", f_obs, f_err)
-            
-            sampler = mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_steps=n_steps)
 
-            samples = sampler.get_chain(discard=1000, flat=True)
-            phi_samples = samples[:, 0]
+            if isinstance(f_err, (list, tuple, np.ndarray)) and len(f_err) == 2:
+                print("Skewed distribution. Taking lower chain")
+                sampler1 = mcmc(f_obs, f_err[0], model_eqn, sigma_eqn, freq_eqn, n_steps=n_steps)
+                samples1 = sampler1.get_chain(discard=1000, flat=True)
+                phi_samples1 = samples1[:, 0]
+                phi_deg1 = np.array(np.degrees(phi_samples1))
 
-            # Convert to degrees 
-            phi_deg = np.array(np.degrees(phi_samples))
-            print(phi_deg.shape)
-            print("Median latitude (deg):", np.median(phi_deg))
+                print("Median latitude (deg):", np.median(phi_deg1))
+                print("Std", np.std(phi_deg1))
+
+                print("Taking upper chain")
+
+                sampler2 = mcmc(f_obs, f_err[1], model_eqn, sigma_eqn, freq_eqn, n_steps=n_steps)
+                samples2 = sampler2.get_chain(discard=1000, flat=True)
+                phi_samples2 = samples2[:, 0]
+                phi_deg2 = np.array(np.degrees(phi_samples2))
+                print("Median latitude (deg):", np.median(phi_deg2))
+                print("Std", np.std(phi_deg2))
+
+
+                threshold = (np.mean(phi_deg1) + np.mean(phi_deg2)) / 2
+                phi_deg = np.concatenate([
+                    phi_deg1[phi_deg1 < threshold],
+                    phi_deg2[phi_deg2 > threshold]
+                ])
+
+                print("Total Median latitude (deg):", np.median(phi_deg))
+                print("Total Std", np.std(phi_deg))
+
+            else:
+                sampler = mcmc(f_obs, f_err, model_eqn, sigma_eqn, freq_eqn, n_steps=n_steps)
+
+                samples = sampler.get_chain(discard=1000, flat=True)
+                phi_samples = samples[:, 0]
+
+                # Convert to degrees 
+                phi_deg = np.array(np.degrees(phi_samples))
+
+                print("Median latitude (deg):", np.median(phi_deg))
+                print("Std", np.std(phi_deg))
             phi_arr.append(phi_deg)
+            print(f"appended phi_deg of median {np.median(phi_deg)}")
         phi_super_arr.append(phi_arr)
         i += 1
-
+    print("saving to: ", root + f'{sector_data_string}_phi_distributions.npz')
     np.savez(root + f'{sector_data_string}_phi_distributions.npz', 
              wind_eqn_strings=wind_eqn_strings, phi_distributions=np.array(phi_super_arr, dtype=object))

@@ -94,7 +94,7 @@ def plot_periodogram(axs, frequency, power, fap_stack, color,
         # axs.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
     if period_limit is not None:
         axs.axvspan(axs.get_xlim()[0], period_limit, alpha=0.33, color=plot_colors_rgb[2], label='Feature Candidates')
-        axs.axvline(period_limit, color=plot_colors_rgb[3], linestyle='dashdot', label=f'Minimum Period Limit', linewidth=2)
+        axs.axvline(period_limit, color=plot_colors_rgb[3], linestyle='dashdot', label="$P_{MPSS}$", linewidth=2)
 
     axs.legend(fontsize=12, loc=legend_loc, prop={'size': 14})
     axs.grid(True)
