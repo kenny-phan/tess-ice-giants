@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from astropy.timeseries import LombScargle
 from scipy.signal import find_peaks
@@ -77,10 +78,12 @@ def get_peak_frequencies(frequency, power, false_alarm_array):
     return frequency[peaks], power[peaks]
 
 
-def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_idx=0,
+def save_periodograms(sector_data_list, sector_data_strings, save_dir, flux_type='detrended', fap_idx=0,
                       min_freq_arr=[], max_freq_arr=[],
                       samples_per_peak=10):
     
+    os.makedirs(save_dir, exist_ok=True)
+
     for i, sector_data in tqdm(enumerate(sector_data_list)):
         frequency, power, false_alarm_levels, ls = make_periodogram(sector_data['time'], sector_data[flux_type],
                                                                 minimum_frequency=min_freq_arr[i], 
@@ -92,7 +95,7 @@ def save_periodograms(sector_data_list, sector_data_strings, root, flux_type='de
         for j, peak in enumerate(peak_pows):
             peak_fap[j] = ls.false_alarm_probability(peak)
         # print(false_alarm_levels)
-        np.savez(root + f'{sector_data_strings[i]}_periodogram.npz', 
+        np.savez(save_dir + f'{sector_data_strings[i]}_periodogram.npz', 
                 frequency=frequency, power=power, false_alarm_levels=false_alarm_levels,
                 peak_freqs=peak_freqs, peak_pows=peak_pows, peak_fap=peak_fap)    
     

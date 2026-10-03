@@ -1,3 +1,5 @@
+import glob
+import os
 import numpy as np
 import numpy.polynomial.polynomial as poly 
 from astroquery.jplhorizons import Horizons
@@ -79,7 +81,9 @@ def correct_and_save_light_curves(target_id_arr, observer_id_arr,
                                   data_file_arr, save_dir, 
                                   name_arr, crop_range_arr=None,
                                   correct=False):
-
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
     for i, data_file in enumerate(data_file_arr):
         if correct:
             time, raw, orbit_corrected, detrended = detrend_all(target_id_arr[i], observer_id_arr[i], data_file, 
@@ -91,3 +95,15 @@ def correct_and_save_light_curves(target_id_arr, observer_id_arr,
             detrended = linear_detrend(time, raw_flux)[2]
             
             np.savez(save_dir + f"{name_arr[i]}.npz", time=time, orbit_corrected=raw_flux, detrended=detrended)
+
+def get_lc_files(root, bps, pps, planets=('Uranus', 'Neptune')):
+    raw_light_curves = os.path.join(root, 'raw_light_curves')
+    data_file_arr = []
+    for planet in planets:
+        pattern = os.path.join(
+            raw_light_curves,
+            f'{planet}*_bps{bps}_pps{pps}',
+            f'lc_{planet}*.txt'
+        )
+        data_file_arr.extend(sorted(glob.glob(pattern)))
+    return data_file_arr

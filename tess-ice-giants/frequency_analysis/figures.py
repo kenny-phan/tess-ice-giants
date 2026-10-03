@@ -47,6 +47,8 @@ plot_colors_rgb = [
     (207/255, 207/255, 207/255)  # CFCFCF
 ]
 
+dpi = 200
+
 ## light curve and periodogram plotting functions
 def scatter_data(axs, name, sector, x, y, color):
     formatter = ScalarFormatter(useMathText=True)
@@ -100,6 +102,34 @@ def plot_periodogram(axs, frequency, power, fap_stack, color,
     axs.grid(True)
     axs.figure.canvas.draw()  # ← Move here, AFTER all formatting
 
+def plot_sup_pgram(planet_sectors, periodogram_list, 
+                   max_freq_arr, min_freq_arr, save_dir, 
+                   dpi=dpi):
+    os.makedirs(save_dir, exist_ok=True)
+
+    fig, axs = plt.subplots(5, figsize=(12, 16))
+
+    for i, pgram in enumerate(periodogram_list):
+        frequency, power, fap_stack = pgram['frequency'], pgram['power'], pgram['false_alarm_levels']
+        # axs[i].scatter(24/pgram['peak_freqs'], pgram['peak_pows'], label=f"{planet_sectors[i]} peaks")
+        axs[i].vlines(24/max_freq_arr[i], 0, 0.3, color="red", 
+                    linestyle="dashed", label="1/Nyquist Frequency", linewidth=2)
+        axs[i].vlines(24/min_freq_arr[i], 0, 0.3, color="purple", 
+                    linestyle="dashed", label="1/2 Time Span", linewidth=2)
+
+        plot_periodogram(axs[i], frequency, power, fap_stack, color='blue', xlim=[1, 600], legend_loc="upper left")
+        axs[i].set_xscale("log")
+
+        # Text box in upper right
+        smallest_peak = np.min(24/pgram['peak_freqs'])*60
+        axs[i].text(0.98, 0.95, f"{planet_sectors[i]} smallest peak: {smallest_peak/60:.2f} hours",
+                    transform=axs[i].transAxes,
+                    ha='right', va='top', fontsize=14,
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    fig.supylabel("Power", fontsize=20)
+    fig.subplots_adjust(left=0.08) 
+    plt.savefig(save_dir + "sup_periodograms.png", dpi=dpi)
 
 def plot_lightcurve_and_periodogram(planet, 
                                     lc_list, 
@@ -163,7 +193,7 @@ def plot_lightcurve_and_periodogram(planet,
     plt.tight_layout()
 
     if root is not None:
-        plt.savefig(root + f"{planet}.png", transparent=True, dpi=200)
+        plt.savefig(root + f"{planet}.png", transparent=True, dpi=dpi)
     else: 
         plt.show()
 
