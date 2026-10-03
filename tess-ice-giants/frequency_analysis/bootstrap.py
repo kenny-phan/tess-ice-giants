@@ -1,3 +1,4 @@
+import os
 import warnings
 
 import numpy as np
@@ -13,7 +14,7 @@ from sklearn.mixture import GaussianMixture
 from tqdm import tqdm
 
 from fullsector import debug_print, get_peak_frequencies
-from figures import plot_colors_rgb
+from figures import plot_colors_rgb, dpi
 
 warnings.filterwarnings('ignore') 
 
@@ -299,7 +300,7 @@ def fit_skew_normal(x, y):
     return a_fit, xi_fit, omega_fit, amp_fit, x_fit, y_fit
 
 def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percent=0.8, 
-                           min_period=5, max_period=20, n_freqs=10000, plot=False, n_plot=100): 
+                           min_period=5, max_period=20, n_freqs=10000, n_plot=100, figdir=None, sds=None): 
     """Bootstrap the peak periods from the Lomb-Scargle periodogram of the lightcurve.""" 
         # min, max period in days
 
@@ -327,15 +328,15 @@ def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percen
 
         peak_periods.append(1 / np.array(peak_freqs))  
 
-        if plot and i in range(0, n_bootstraps, n_plot):
+        if figdir and i in range(0, n_bootstraps, n_plot):
+            os.makedirs(figdir, exist_ok=True)
+
             plt.plot(1/freq_grid, power, color='gray', alpha=0.5)
             plt.axhline(fap, color='red', linestyle='--', label=f'FAP={fap_level * 100}%' if i == 0 else None)
             plt.xlabel("Period [Days]")
             plt.ylabel("Power")
-    
-    if plot: 
-        plt.legend()
-        plt.show()
+            plt.legend()
+            plt.savefig(figdir + f"{sds}bootstrap.png", dpi=dpi)
 
     if len(peak_periods) == 0:
         return np.array([])
@@ -515,7 +516,7 @@ def get_hist(samples):
     observed_freq = np.interp(bin_centers, bin_centers[~zeromask], observed_freq[~zeromask])
     return n_bins, bin_centers, bin_edges, observed_freq
 
-def autoclassify_posterior(samples, truncbound=None, verbose=False):
+def classify_posterior(samples, truncbound=None, verbose=False):
     
     samples = np.asarray(samples).ravel()
     _, bin_centers, bin_edges, observed_freq = get_hist(samples)
@@ -627,10 +628,10 @@ def autoclassify_posterior(samples, truncbound=None, verbose=False):
 
     return classification, bestmean, beststd, weights, x, pdf
 
-def autocluster_peaks(peaks, 
+def cluster_peaks(peaks, sds="sector", 
                   eps=0.005, 
                   min_samples=5, 
-                  plot=False, n_cols=2, 
+                  figdir=None, n_cols=2, 
                   n_bootstraps=10000, 
                   pass_frac=0.8, truncbound=None, verbose=False):
 
@@ -641,36 +642,47 @@ def autocluster_peaks(peaks,
     labels = db.labels_
 
     unique_labels = np.unique(labels)
-    n_clusters = len(unique_labels)
-    n_rows = int(np.ceil(n_clusters / n_cols))
+
+    # --- Pre-compute which clusters will actually be plotted ---
+    if figdir:
+        valid_labels = []
+        for label in unique_labels:
+            count = len(peaks[labels == label].flatten())
+            if count >= n_bootstraps * pass_frac:
+                valid_labels.append(label)
+        n_plots = len(valid_labels)
+    else:
+        n_plots = 0
+
+    n_rows = int(np.ceil(n_plots / n_cols)) if n_plots > 0 else 1
 
     all_means, all_stds = [], []
 
-    if plot: 
+    if figdir and n_plots > 0:
         fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
-        axes = axes.flatten()  
+        axes = np.atleast_1d(axes).flatten()
+    elif figdir:
+        fig, axes = plt.subplots(1, 1, figsize=(5, 4))
+        axes = np.array([axes])
 
     plot_idx = 0
 
     debug_print(verbose, "classifying clusters")
     for n, label in enumerate(unique_labels):
-        debug_print(verbose, f"Processing cluster {n+1}/{n_clusters} with label {label}")
+        debug_print(verbose, f"Processing cluster {n+1}/{len(unique_labels)} with label {label}")
         cluster_points = peaks[labels == label].flatten()
         count = len(cluster_points)
 
         if count < n_bootstraps * pass_frac:
             continue
 
-        ax = axes[plot_idx]
-        if plot is False:
-            plt.close()  # closes the figure without displaying
-
         debug_print(verbose, f"Classifying Cluster {label}: count={count}, points={cluster_points}")
-        classification, mean, std, weights, x, pdf = autoclassify_posterior(cluster_points, 
+        classification, mean, std, weights, x, pdf = classify_posterior(cluster_points, 
                                                                     truncbound=truncbound, 
                                                                     verbose=verbose)
         
-        if plot:
+        if figdir:
+            ax = axes[plot_idx]
             n_bins, bin_centers, _, observed_freq = get_hist(cluster_points)
 
             counts, bins, _ = ax.hist(cluster_points, bins=n_bins, color='lightsteelblue', edgecolor='k')
@@ -703,13 +715,13 @@ def autocluster_peaks(peaks,
         all_means.append(mean)
         all_stds.append(std)
 
-    if plot:
+    if figdir:
         # Hide any unused subplots
         for j in range(plot_idx, len(axes)):
             fig.delaxes(axes[j])
 
         plt.tight_layout()
-        plt.show()
+        plt.savefig(figdir + f"{sds}cluster.png", dpi=dpi)
 
     return labels, all_means, all_stds
 
@@ -818,16 +830,18 @@ def autocluster_peaks(peaks,
 #     return labels, all_means, all_stds
 
 
-def save_bootstrap(sector_data_list, sector_data_strings, root, flux_type='detrended', fap_level=0.01, min_period_arr=[], max_period_arr=[],
-                   n_freqs=int(1e5), n_bootstraps=10000, plot=True):
+def save_bootstrap(sector_data_list, sector_data_strings, save_dir, flux_type='detrended', fap_level=0.01, min_period_arr=[], max_period_arr=[],
+                   n_freqs=int(1e5), n_bootstraps=10000, figdir=None):
     
+    os.makedirs(save_dir, exist_ok=True)
+
     for i, sector_data in enumerate(sector_data_list):
 
         peak_periods = bootstrap_peak_periods(sector_data['time'], sector_data[flux_type], fap_level, 
                                                 min_period=min_period_arr[i], max_period=max_period_arr[i], n_freqs=n_freqs, 
-                                                n_bootstraps=n_bootstraps, plot=plot)
+                                                n_bootstraps=n_bootstraps, figdir=figdir, sds=sector_data_strings[i])
         # labels, all_means, all_stds = cluster_peaks(peak_periods, eps=0.0001, plot=True, n_cols=3)
-        np.savez(root + f'{sector_data_strings[i]}_bootstrap.npz', 
+        np.savez(save_dir + f'{sector_data_strings[i]}_bootstrap.npz', 
                  peak_periods=peak_periods)#, labels=labels, all_means=all_means, all_stds=all_stds)
 
 
@@ -888,11 +902,11 @@ def flatten_mixed_list(mixed_list):
 #                  matched_means=matched_means, matched_stds=matched_stds)
 
 
-def autosave_cluster(periodograms, 
+def save_cluster(periodograms, 
                  peak_periods_list, 
                  sector_data_strings, 
                  save_dir, 
-                 plot=False, 
+                 figdir=None, 
                  eps_arr=[0.001, 0.001, 0.001, 0.001, 0.005], 
                  tolerance= 0.005, 
                  n_cols=3, 
@@ -900,12 +914,15 @@ def autosave_cluster(periodograms,
                  pass_frac=0.8,
                  truncbound=None, 
                  verbose=False):
-    
+
+    os.makedirs(save_dir, exist_ok=True)
+
     for i, peak_periods in enumerate(peak_periods_list):
 
-        _, all_means, all_stds = autocluster_peaks(peak_periods, 
+        _, all_means, all_stds = cluster_peaks(peak_periods, 
+                                                sds=sector_data_strings[i],
                                                 eps=eps_arr[i], 
-                                                plot=plot, n_cols=n_cols, 
+                                                figdir=figdir, n_cols=n_cols, 
                                                 n_bootstraps=n_bootstraps, 
                                                 pass_frac=pass_frac, 
                                                 truncbound=truncbound, 
