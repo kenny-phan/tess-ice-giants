@@ -1,4 +1,5 @@
 import emcee
+import os
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -140,11 +141,12 @@ def parse_classifications(distribution,
     for dist in distribution:
         dist = np.asarray(dist, dtype=float).ravel()   # ensure numeric
         
-        classification_result = classify_posterior(dist, 
-                                                   boundaries=boundaries, 
-                                                   min_prominence=min_prominence,
-                                                   allow_skew_truc=allow_skew_truc, 
-                                                   skew_threshold=skew_threshold)
+        classification_result = classify_posterior(dist, truncbound=True
+                                                #    boundaries=boundaries, 
+                                                #    min_prominence=min_prominence,
+                                                #    allow_skew_truc=allow_skew_truc, 
+                                                #    skew_threshold=skew_threshold
+                                                   )
         debug_print(verbose, f"Classification Result: {classification_result[0]}")
 
         all_means.append(classification_result[1])
@@ -289,14 +291,18 @@ def multiply_nested(std, mean_squared):
 
 def is_homogeneous(arr):
     """Check if all elements are the same type."""
-    if not arr:
+    # if not arr:
+    #     return True
+    if len(arr) == 0:
         return True
     return all(type(elem) == type(arr[0]) for elem in arr)
 
 def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr, 
               Re, Rp, P, Re_err, Rp_err, P_err, 
-              wind_eqn_strings, sector_data_string, root, reperrs=None,
+              wind_eqn_strings, sector_data_string, save_dir, reperrs=None,
               min_freq_threshold=0.5, n_steps=5000):
+
+    os.makedirs(save_dir, exist_ok=True)
     
     min_freq_arr = get_minimum_frequency_arr(wind_eqns, Re, Rp, P)
     freq_eqn = RHS(Re, Rp, P) 
@@ -398,6 +404,6 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
             print(f"appended phi_deg of median {np.median(phi_deg)}")
         phi_super_arr.append(phi_arr)
         i += 1
-    print("saving to: ", root + f'{sector_data_string}_phi_distributions.npz')
-    np.savez(root + f'{sector_data_string}_phi_distributions.npz', 
+    print("saving to: ", save_dir + f'{sector_data_string}_phi_distributions.npz')
+    np.savez(save_dir + f'{sector_data_string}_phi_distributions.npz', 
              wind_eqn_strings=wind_eqn_strings, phi_distributions=np.array(phi_super_arr, dtype=object))
