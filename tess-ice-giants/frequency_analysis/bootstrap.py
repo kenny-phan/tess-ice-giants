@@ -531,14 +531,17 @@ def classify_posterior(samples, truncbound=None, verbose=False):
         
     # bimode
     bimeans, bistds, biweights, x_fit, biexpected_freq = fit_bimodal_gaussian(bin_centers, observed_freq)
-    bimean, bistd, biwgt = bimeans, bistds, biweights
 
     biexpected_freq *= len(samples) * (bin_edges[1] - bin_edges[0])
     chi2_stat = chi2_test(observed_freq, biexpected_freq)
+    sep = abs(bimeans[1] - bimeans[0])
+    width = np.max(bistds)
+    if sep < width:   # tune this
+        chi2_stat = np.inf 
     results.append({
         'distribution': 'bimodal',
         'chi2_stat': chi2_stat,
-        'params': {'mean': bimean, 'std': bistd},
+        'params': {'mean': bimeans, 'std': bistds},
         'fit': {'x': bin_centers, 'pdf': biexpected_freq}
     })
 
@@ -949,5 +952,4 @@ def save_cluster(periodograms,
         print()
         np.savez(save_dir + f'{sector_data_strings[i]}_clustered_peaks.npz', 
                  matched_means=matched_means, matched_stds=np.array(matched_stds, dtype=object))
-
 
