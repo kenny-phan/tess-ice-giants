@@ -164,7 +164,7 @@ def parse_classifications(distribution,
                 plt.plot(x, pdf, 'r-', linewidth=2, label=f'Gaussian: μ={mean_val:.3f}, σ={param_val:.3f}')
             
             elif classification_type == "Truncated Gaussian":
-                a, b = (boundaries[0] - mean_val) / param_val, (boundaries[1] - mean_val) / param_val
+                a, b = (truncbound[0] - mean_val) / param_val, (truncbound[1] - mean_val) / param_val
                 pdf = truncnorm.pdf(x, a, b, loc=mean_val, scale=param_val)
                 plt.plot(x, pdf, 'r-', linewidth=2, label=f'Truncated Gaussian: μ={mean_val:.3f}, σ={param_val:.3f}')
             

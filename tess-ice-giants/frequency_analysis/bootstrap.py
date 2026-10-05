@@ -348,32 +348,75 @@ def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percen
 
 # fit a gaussian to the mcmc posteriors
 
-def fit_truncated_normal(x, b, mu0=None, sigma0=None):
-    x = np.asarray(x)
-    if mu0 is None: mu0 = np.mean(x)
+# def fit_truncated_normal(x, b, mu0=None, sigma0=None):
+#     x = np.asarray(x)
+#     if mu0 is None: mu0 = np.mean(x)
+#     if sigma0 is None: sigma0 = np.std(x, ddof=1)
+
+#     def neg_loglike(params):
+#         mu, log_sigma = params
+#         sigma = np.exp(log_sigma)
+
+#         with warnings.catch_warnings():
+#             warnings.simplefilter("ignore", RuntimeWarning)
+
+#             z = (x - mu) / sigma
+#             log_pdf = stats.norm.logpdf(z) - np.log(sigma)
+#             log_norm_const = stats.norm.logcdf((b - mu) / sigma)
+
+#         return -np.sum(log_pdf - log_norm_const)
+
+#     res = optimize.minimize(
+#         neg_loglike,
+#         x0=[mu0, np.log(sigma0)],
+#         method="L-BFGS-B"
+#     )
+#     mu_hat, sigma_hat = res.x[0], np.exp(res.x[1])
+#     return mu_hat, sigma_hat, res
+def fit_truncated_normal(x, bound, direction, mu0=None, sigma0=None):
+
+    x = np.asarray(x, dtype=float)
+    if mu0 is None:    mu0    = np.mean(x)
     if sigma0 is None: sigma0 = np.std(x, ddof=1)
+
+    if direction == "lower":
+        a, b = (bound - mu0) / sigma0, np.inf   # placeholder; recomputed per-iter
+    elif direction == "upper":
+        a, b = -np.inf, (bound - mu0) / sigma0
+    else:
+        raise ValueError("direction must be 'lower' or 'upper'")
 
     def neg_loglike(params):
         mu, log_sigma = params
         sigma = np.exp(log_sigma)
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-
-            z = (x - mu) / sigma
-            log_pdf = stats.norm.logpdf(z) - np.log(sigma)
-            log_norm_const = stats.norm.logcdf((b - mu) / sigma)
-
-        return -np.sum(log_pdf - log_norm_const)
+        z = (x - mu) / sigma
+        log_pdf = stats.norm.logpdf(z) - np.log(sigma)
+        if direction == "lower":
+            # P(X >= bound) = sf((bound - mu)/sigma)
+            log_norm = np.log(stats.norm.sf((bound - mu) / sigma))
+        else:
+            # P(X <= bound) = cdf((bound - mu)/sigma)
+            log_norm = np.log(stats.norm.cdf((bound - mu) / sigma))
+        return -np.sum(log_pdf - log_norm)
 
     res = optimize.minimize(
         neg_loglike,
         x0=[mu0, np.log(sigma0)],
-        method="L-BFGS-B"
+        method="L-BFGS-B",
     )
-    mu_hat, sigma_hat = res.x[0], np.exp(res.x[1])
-    return mu_hat, sigma_hat, res
+    mu_hat    = res.x[0]
+    sigma_hat = np.exp(res.x[1])
 
+    # Build the matching truncated-normal PDF on a dense grid
+    if direction == "lower":
+        a_std, b_std = (bound - mu_hat) / sigma_hat, np.inf
+    else:
+        a_std, b_std = -np.inf, (bound - mu_hat) / sigma_hat
+
+    x_fit = np.linspace(x.min(), x.max(), 200)
+    y_fit_pdf = stats.truncnorm.pdf(x_fit, a_std, b_std, loc=mu_hat, scale=sigma_hat)
+
+    return mu_hat, sigma_hat, x_fit, y_fit_pdf
 
 # def credible_interval(samples, ci=0.68):
 #     """
@@ -406,55 +449,55 @@ def fit_truncated_normal(x, b, mu0=None, sigma0=None):
 #     return lower, median, upper
 
 
-def detect_truncation(samples, boundaries=[0, 90], delta_loglike=15):
-    """
-    Return True if posterior is significantly better fit by a truncated-normal 
-    than by a standard normal.
-    delta_loglike : threshold difference for significance (in log-evidence units)
-    """
-    samples = np.asarray(samples)
-    low, high = boundaries
+# def detect_truncation(samples, boundaries=[0, 90], delta_loglike=15):
+#     """
+#     Return True if posterior is significantly better fit by a truncated-normal 
+#     than by a standard normal.
+#     delta_loglike : threshold difference for significance (in log-evidence units)
+#     """
+#     samples = np.asarray(samples)
+#     low, high = boundaries
 
-    # Fit full (untruncated) Gaussian
-    mu_full = np.mean(samples)
-    sigma_full = np.std(samples)
+#     # Fit full (untruncated) Gaussian
+#     mu_full = np.mean(samples)
+#     sigma_full = np.std(samples)
 
-    ll_full = np.sum(stats.norm.logpdf(samples, mu_full, sigma_full))
+#     ll_full = np.sum(stats.norm.logpdf(samples, mu_full, sigma_full))
 
-    # Fit truncated normal to BOTH boundaries
-    mu_t, sigma_t, _ = fit_truncated_normal(samples, b=low,  mu0=mu_full, sigma0=sigma_full)
-    ll_low = np.sum(stats.truncnorm.logpdf(
-        samples, (low - mu_t)/sigma_t, (high - mu_t)/sigma_t, loc=mu_t, scale=sigma_t
-    ))
+#     # Fit truncated normal to BOTH boundaries
+#     mu_t, sigma_t, _ = fit_truncated_normal(samples, b=low,  mu0=mu_full, sigma0=sigma_full)
+#     ll_low = np.sum(stats.truncnorm.logpdf(
+#         samples, (low - mu_t)/sigma_t, (high - mu_t)/sigma_t, loc=mu_t, scale=sigma_t
+#     ))
 
-    mu_t2, sigma_t2, _ = fit_truncated_normal(samples, b=high, mu0=mu_full, sigma0=sigma_full)
-    ll_high = np.sum(stats.truncnorm.logpdf(
-        samples, (low - mu_t2)/sigma_t2, (high - mu_t2)/sigma_t2, loc=mu_t2, scale=sigma_t2
-    ))
+#     mu_t2, sigma_t2, _ = fit_truncated_normal(samples, b=high, mu0=mu_full, sigma0=sigma_full)
+#     ll_high = np.sum(stats.truncnorm.logpdf(
+#         samples, (low - mu_t2)/sigma_t2, (high - mu_t2)/sigma_t2, loc=mu_t2, scale=sigma_t2
+#     ))
 
-    ll_trunc = max(ll_low, ll_high)
+#     ll_trunc = max(ll_low, ll_high)
 
-    # If truncated log-likelihood is much higher → it's truncated
-    return (ll_trunc - ll_full) > delta_loglike, ll_low, ll_high
+#     # If truncated log-likelihood is much higher → it's truncated
+#     return (ll_trunc - ll_full) > delta_loglike, ll_low, ll_high
 
 
-def detect_bimodality(samples, min_prominence=0.005):
-    samples = np.asarray(samples, dtype=float).ravel()
-    try:
-        kde = gaussian_kde(samples)
-    except np.linalg.LinAlgError:
-        # If KDE fails due to singular matrix, treat as unimodal
-        return "unimodal"
-    xs = np.linspace(samples.min(), samples.max(), 2000)
-    ys = kde(xs)
+# def detect_bimodality(samples, min_prominence=0.005):
+#     samples = np.asarray(samples, dtype=float).ravel()
+#     try:
+#         kde = gaussian_kde(samples)
+#     except np.linalg.LinAlgError:
+#         # If KDE fails due to singular matrix, treat as unimodal
+#         return "unimodal"
+#     xs = np.linspace(samples.min(), samples.max(), 2000)
+#     ys = kde(xs)
 
-    # find all peaks
-    peaks, _ = find_peaks(ys, prominence=min_prominence * np.max(ys))
+#     # find all peaks
+#     peaks, _ = find_peaks(ys, prominence=min_prominence * np.max(ys))
 
-    if len(peaks) < 2:
-        return "unimodal"
+#     if len(peaks) < 2:
+#         return "unimodal"
     
-    return "bimodal"
+#     return "bimodal"
 
 
 # def classify_posterior(samples, boundaries=[0, 90], min_prominence=0.01,
@@ -499,9 +542,16 @@ def detect_bimodality(samples, min_prominence=0.005):
 #         return classification, lat[0], std[0], weights
 
 
-def chi2_test(observed, expected, floor=1.0):
+# def chi2_test(observed, expected, floor=1.0):
+#     observed = np.asarray(observed, dtype=float)
+#     expected = np.clip(np.asarray(expected, dtype=float), floor, None)
+#     return np.sum((observed - expected) ** 2 / expected)
+
+def chi2_test(observed, expected, floor_frac=0.01):
     observed = np.asarray(observed, dtype=float)
-    expected = np.clip(np.asarray(expected, dtype=float), floor, None)
+    expected = np.asarray(expected, dtype=float)
+    floor = max(floor_frac * expected.max(), 1e-6)
+    expected = np.clip(expected, floor, None)
     return np.sum((observed - expected) ** 2 / expected)
 
 def get_hist(samples):
@@ -523,7 +573,21 @@ def classify_posterior(samples, truncbound=None, verbose=False):
     if (len(bin_centers) < 3):
         return 'gaussian', np.mean(bin_centers), 0, None, np.mean(bin_centers), observed_freq
     
+    dx  = bin_edges[1] - bin_edges[0]
+    N   = len(samples)
+    nb  = len(bin_centers)
+    log_nb = np.log(nb)
+
     results = []
+
+    def add_result(name, chi_2, k, params, freq):
+        results.append({
+            'distribution': name,
+            'chi2': chi_2,          # keep old key for downstream compatibility
+            'k': k,
+            'params': params,
+            'fit': {'x': bin_centers, 'pdf': freq},
+        })
 
     # classification = detect_bimodality(samples, min_prominence=min_prominence)
 
@@ -532,68 +596,53 @@ def classify_posterior(samples, truncbound=None, verbose=False):
     # bimode
     bimeans, bistds, biweights, x_fit, biexpected_freq = fit_bimodal_gaussian(bin_centers, observed_freq)
 
-    biexpected_freq *= len(samples) * (bin_edges[1] - bin_edges[0])
-    chi2_stat = chi2_test(observed_freq, biexpected_freq)
+    biexpected_freq *= N * dx
+    bichi2_stat = chi2_test(observed_freq, biexpected_freq)
+    # bichi2_stat = (0, bichi2_stat[1])
     sep = abs(bimeans[1] - bimeans[0])
     width = np.max(bistds)
-    if sep < width:   # tune this
-        chi2_stat = np.inf 
-    results.append({
-        'distribution': 'bimodal',
-        'chi2_stat': chi2_stat,
-        'params': {'mean': bimeans, 'std': bistds},
-        'fit': {'x': bin_centers, 'pdf': biexpected_freq}
-    })
+    if sep > width:   # tune this
+
+        add_result('bimodal', bichi2_stat, 6, 
+                {'mean': bimeans, 'std':bistds, 'weights':biweights},
+                biexpected_freq)
 
 # else:
     mean, std = np.mean(samples), np.std(samples)
 
     # normal dist
-    normmeans, normstds, x_fit, normexpected_freq = fit_gaussian(bin_centers, observed_freq)
-    normmean, normstd = normmeans, normstds
+    normmean, normstd, x_fit, normexpected_freq = fit_gaussian(bin_centers, observed_freq)
 
-    # Perform chi-squared goodness-of-fit tests
-    
     # 1. Normal distribution
-    # normexpected_freq = norm.pdf(bin_centers, normmean, normstd) * len(samples) * (bin_edges[1] - bin_edges[0])        
-    chi2_stat = chi2_test(observed_freq, normexpected_freq)
-    results.append({
-        'distribution': 'normal',
-        'chi2_stat': chi2_stat,
-        'params': {'mean': normmean, 'std': normstd},
-        'fit': {'x': bin_centers, 'pdf': normexpected_freq}
-    })
+    # normexpected_freq = norm.pdf(bin_centers, normmean, normstd) * N * dx        
+    normchi2_stat = chi2_test(observed_freq, normexpected_freq)
+    add_result('normal', normchi2_stat, 2,
+               {'mean': normmean, 'std': normstd}, normexpected_freq)
 
     if truncbound:
         # truncated at lower bound
-        mu_hat_0, sigma_hat_0, _ = fit_truncated_normal(samples, mu0=mean, sigma0=std, b=truncbound[0])
+        mu_hat_0, sigma_hat_0, _ = fit_truncated_normal(samples, mu0=mean, sigma0=std, b=truncbound[0], direction='lower')
 
         # truncated at upper bound
-        mu_hat_1, sigma_hat_1, _ = fit_truncated_normal(samples, mu0=mean, sigma0=std, b=truncbound[1]) 
+        mu_hat_1, sigma_hat_1, _ = fit_truncated_normal(samples, mu0=mean, sigma0=std, b=truncbound[1], direction='upper') 
 
         # 3. Truncated at lower bound
         a = (truncbound[0] - mu_hat_0) / sigma_hat_0
         b = np.inf
-        trunc0expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_0, sigma_hat_0) * len(samples) * (bin_edges[1] - bin_edges[0])
-        chi2_stat = chi2_test(observed_freq, trunc0expected_freq)
-        results.append({
-            'distribution': 'truncated_at_0',
-            'chi2_stat': chi2_stat,
-            'params': {'mean': mu_hat_0, 'std': sigma_hat_0},
-            'fit': {'x': bin_centers, 'pdf': trunc0expected_freq}
-        })
+        trunc0expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_0, sigma_hat_0) * N * dx
+        trunc0chi2_stat = chi2_test(observed_freq, trunc0expected_freq)
+
+        add_result('truncated_at_0', trunc0chi2_stat, 2, 
+                   {'mean': mu_hat_0, 'std': sigma_hat_0}, trunc0expected_freq)
         
         # 4. Truncated at upper bound
         a = -np.inf
         b = (truncbound[1] - mu_hat_1) / sigma_hat_1
-        trunc1expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_1, sigma_hat_1) * len(samples) * (bin_edges[1] - bin_edges[0])
-        chi2_stat = chi2_test(observed_freq, trunc1expected_freq)
-        results.append({
-            'distribution': 'truncated_at_90',
-            'chi2_stat': chi2_stat,
-            'params': {'mean': mu_hat_1, 'std': sigma_hat_1},
-            'fit': {'x': bin_centers, 'pdf': trunc1expected_freq}
-        })
+        trunc1expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_1, sigma_hat_1) * N * dx
+        trunc1chi2_stat = chi2_test(observed_freq, trunc1expected_freq)
+
+        add_result('truncated_at_1', trunc1chi2_stat, 2, 
+                   {'mean': mu_hat_1, 'std': sigma_hat_1}, trunc1expected_freq)
         
     # # 5. Skewed normal
 
@@ -603,16 +652,15 @@ def classify_posterior(samples, truncbound=None, verbose=False):
     median_q = skewnorm.ppf(0.50, a_hat, loc=xi_hat, scale=omega_hat)
     upper  = skewnorm.ppf(0.84, a_hat, loc=xi_hat, scale=omega_hat)
 
-    chi2_stat = chi2_test(observed_freq, skewexpected_freq)
-    results.append({
-        'distribution': 'skew_normal',
-        'chi2_stat': chi2_stat,
-        'params': {'mean': median_q, 'std': [median_q - lower, upper - median_q], 'alpha': a_hat},
-        'fit': {'x': bin_centers, 'pdf': skewexpected_freq}
-    })
+    skewchi2_stat = chi2_test(observed_freq, skewexpected_freq)
+    add_result('skew_normal', skewchi2_stat, 3,
+               {'mean': median_q,
+                'std': [median_q - lower, upper - median_q],
+                'alpha': a_hat},
+               skewexpected_freq)
     
     # Sort by chi2 statistic (lower is better fit)
-    results.sort(key=lambda x: x['chi2_stat'])
+    results.sort(key=lambda x: x['chi2'])
 
     best_result = results[0]
 
@@ -627,7 +675,7 @@ def classify_posterior(samples, truncbound=None, verbose=False):
     x = best_result['fit'].get('x')
     pdf = best_result['fit'].get('pdf')
 
-    debug_print(verbose, [(d['distribution'], d['chi2_stat']) for d in results])
+    debug_print(verbose, [(d['distribution'], d['chi2']) for d in results])
 
     return classification, bestmean, beststd, weights, x, pdf
 
@@ -636,7 +684,8 @@ def cluster_peaks(peaks, sds="sector",
                   min_samples=5, 
                   figdir=None, n_cols=2, 
                   n_bootstraps=10000, 
-                  pass_frac=0.8, truncbound=None, verbose=False):
+                  pass_frac=0.8, 
+                  truncbound=None, verbose=False):
 
     debug_print(verbose, f"running dbscan with eps={eps}, min_samples={min_samples}")
 
