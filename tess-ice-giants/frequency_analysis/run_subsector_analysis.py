@@ -5,8 +5,6 @@ import re
 import numpy as np
 from tqdm import tqdm 
 
-from pathlib import Path
-
 from figures import *
 from subsectors import * 
 from fullsector import nyquist_from_cadence
@@ -14,87 +12,123 @@ from bootstrap import bootstrap_peak_periods, cluster_peaks
 from wind_equations import *
 from mcmc import save_mcmc, fit_all_distributions
 
-root = '/home/ktp9/TESSNeptune24/tess-ice-giants/final_data/'
+root = '/home/ktp9/TESSNeptune24/tess-ice-giants/'
+data_dir = root + 'final_data/'
+
+bps, pps = 50, 10
+print(f"bps: {bps}, pps: {pps}")
+bpps_dir = f'bps{bps}_pps{pps}/'
+
+subdir = data_dir + f'subsectors/{bpps_dir}'
 
 ## intitialize the list of sectors 
 planet_sectors = ["u42", "u43", "u44", "n42", "n70"]
 sample_cadences = np.array([10/60, 10/60, 10/60, 10/60, (200/60)/60]) # in hours
 
+supfigdir = root + "figures/supplementary/" + bpps_dir
+
+
 # load in the light curves
-lc_dir = root + 'light_curves/'
+lc_dir = data_dir + "light_curves/" + bpps_dir
 lc_list = []
 for sector in planet_sectors:
-    lc_list.append(np.load(lc_dir + f'{sector}_lcs.npz', allow_pickle=True))
+    lc_list.append(np.load(lc_dir + f'{sector}_lcs.npz'))
 
 # ~10 min runtime, save subsectors
-max_freq_arr = nyquist_from_cadence(sample_cadences)
+
+max_freq_arr = nyquist_from_cadence(sample_cadences / 24)
 
 total_segs = 10
 
 times = [sector['time'] for sector in lc_list]
 fluxes = [sector['orbit_corrected'] for sector in lc_list]
-print("lc files")
-print(lc_list)
-subtimes, subfluxes, subfreqs, subpower, subfap, subpeaks, subpeakfap = split_data(times, fluxes, 
-                                                                            max_freq_arr, freq_array_size=10000,
-                                                                            m=50, total_segs=total_segs, 
-                                                                            bootstrap=True,
-                                                                            verbose=True)
+result = split_data(times, fluxes, 
+                    max_freq_arr, freq_array_size=1000,
+                    m=50, total_segs=total_segs, 
+                    bootstrap=True,
+                    verbose=True)
 
-np.savez(root + 'subsectors/subsectors.npz', subtimes=np.array(subtimes, dtype=object), subfluxes=np.array(subfluxes, dtype=object),
-         subfreqs=np.array(subfreqs, dtype=object), subpower=np.array(subpower, dtype=object), subfap=np.array(subfap, dtype=object),
-         subpeaks=np.array(subpeaks, dtype=object), subpeakfap=np.array(subpeakfap, dtype=object),
+(subtimes, subfluxes, subfreqs, subpower, subfap, subpeaks, subpeakfap) = result
+
+
+os.makedirs(subdir, exist_ok=True)
+print(f"saving to: {subdir}")
+np.savez(subdir + 'subsectors.npz', 
+         subtimes=np.array(subtimes, dtype=object), 
+         subfluxes=np.array(subfluxes, dtype=object),
+         subfreqs=np.array(subfreqs, dtype=object), 
+         subpower=np.array(subpower, dtype=object), 
+         subfap=np.array(subfap, dtype=object),
+         subpeaks=np.array(subpeaks, dtype=object), 
+         subpeakfap=np.array(subpeakfap, dtype=object),
          allow_pickle=True)
 
-# run bootstrap ~50 mins
-subsectors = np.load(root + 'subsectors/subsectors.npz', allow_pickle=True)
+# load data back in 
+subsectors = np.load(subdir + 'subsectors.npz', allow_pickle=True)
 subtimes = subsectors['subtimes']
 subfluxes = subsectors['subfluxes']
 subfreqs = np.array(subsectors['subfreqs'], dtype=float)
 subpower = subsectors['subpower']
 subfap = subsectors['subfap']
+subpeakfap = subsectors['subpeakfap']
+
+# run bootstrap ~50 mins
 
 nsec, nsub = subtimes.shape
 
 bootstrap_results = np.empty((nsec, nsub), dtype=object)
 for sec in range(nsec):
     print(f"Bootstrapping sector {sec+1}/{nsec}...")
+    min_period=1/max_freq_arr[sec]
+
     for sub in range(nsub):
-        print(sec, sub)
         print(f"Bootstrapping subsector {sub+1}/{nsub}...")
+        max_period = (subtimes[sec, sub][-1] - subtimes[sec, sub][0])/2
+        print(f"min, max period: {min_period, max_period}")
+
         peak_periods = bootstrap_peak_periods(subtimes[sec, sub], 
                                               subfluxes[sec, sub], 
                                               fap_level=0.01, 
-                                              n_bootstraps=10000, boot_percent=0.8, 
-                                              min_period=5/24, max_period=25/24, 
-                                              n_freqs=10000, plot=True, n_plot=100)
+                                              n_bootstraps=10000, 
+                                              boot_percent=0.8, 
+                                              min_period=min_period, 
+                                              max_period=max_period, 
+                                              n_freqs=1000, 
+                                              figdir=supfigdir, 
+                                              sds=planet_sectors[sec] + f"_ss{sub}",
+                                              n_plot=100)
         bootstrap_results[sec, sub] = peak_periods
 
-np.savez(root + 'subsectors/bootstrap_results.npz', bootstrap_results=bootstrap_results, allow_pickle=True)
+np.savez(subdir + 'bootstrap_results.npz', 
+         bootstrap_results=bootstrap_results, 
+         allow_pickle=True)
 
 # # # run cluster ~10min
+bootstrap_results = np.load(subdir + 'bootstrap_results.npz', 
+                            allow_pickle=True)['bootstrap_results']
+
 nsec, nsub = bootstrap_results.shape
 cluster_results = np.empty((nsec, nsub), dtype=object)
 for sec in range(nsec):
     print(f"Processing sector {sec}/{nsec}...")
     for sub in range(nsub):
-        print(sec, sub)
         peaks = bootstrap_results[sec, sub]
         labels, all_means, all_stds = cluster_peaks(peaks, 
+                                                    sds=planet_sectors[sec] + f"_ss{sub}",
                                                     eps=0.005, 
-                                                    plot=True,
-                                                    allow_skew_truc=True,
-                                                    skew_threshold=0.9,
-                                                    min_prominence=0.8, 
                                                     n_bootstraps=10000,
-                                                    pass_frac=0.8)
+                                                    pass_frac=0.8, 
+                                                    figdir=supfigdir + "clusters/")
+        
         cluster_results[sec, sub] = (labels, all_means, all_stds)
 
-np.savez(root + 'subsectors/cluster_results.npz', cluster_results=cluster_results, allow_pickle=True)
+np.savez(subdir + 'cluster_results.npz', 
+         cluster_results=cluster_results, 
+         allow_pickle=True)
 
 # run mcmc
-cluster_results = np.load(root + 'subsectors/cluster_results.npz', allow_pickle=True)['cluster_results']
-bootstrap_results = np.load(root + "subsectors/bootstrap_results.npz", allow_pickle=True)['bootstrap_results']
+cluster_results = np.load(subdir + 'cluster_results.npz', allow_pickle=True)['cluster_results']
+nsec, nsub = cluster_results.shape
 
 ur_wind_eqns = [sromovsky2012_odd_N]#, sromovsky2012_odd_S, sromovsky2015_N, sromovsky2015_S]
 # ur_wind_eqn_errs = [sigma_sromovsky2012_odd_N, sigma_sromovsky2012_odd_S, sigma_sromovsky2015_N, sigma_sromovsky2015_S]
@@ -122,37 +156,22 @@ nP_err = 0.0002
 
 reperr12 = 0.088 # degrees/h, pg. 11 of Sromovsky+ 2012c
 reperr15 = 0.147 / 24 # 0.147 degrees/day, pg. 11 of Sromovsky+ 2015
-reperrs = [reperr12]#, reperr12, reperr15, reperr15]
+reperrs = [reperr12, reperr12, reperr15, reperr15]
 
 sub_root = root + "subsectors/"
 
 nsec, nsub = cluster_results.shape
 
-# from mcmc import *
-
-# sub_root = root + "/subsectors/"
-
 mcmc_results = np.empty((nsec, nsub))
 for i, sec in enumerate(range(nsec)):
-    mcmc_root = sub_root + f"{planet_sectors[i]}/"
+    mcmc_root = subdir + f"{planet_sectors[i]}/"
 
     for sub in range(nsub):
-        print(sec, sub)
         labels, all_means, all_stds = cluster_results[sec, sub]
-        print("cluster mean, std", all_means, all_stds)
         sector_data = {}
         sector_data['matched_means'] = all_means
         sector_data['matched_stds'] = all_stds
-        # print(all_means, all_stds)
-        # if len(all_means) > 0:
-        #     sector_data['matched_means'].extend(all_means)
-        #     sector_data['matched_stds'].extend(all_stds)
         
-        # for key in sector_data:
-        #     sector_data[key] = np.array(sector_data[key])
-
-        # print(f"Type of sector_data['matched_means']: {type(sector_data['matched_means'])}")
-        # print(f"Dtype: {sector_data['matched_means'].dtype if hasattr(sector_data['matched_means'], 'dtype') else 'No dtype'}")
         if planet_sectors[i][0] == "u":
             print("Uranus sector: ", planet_sectors[i], "sub", sub)
             save_mcmc(ur_wind_eqns, ur_wind_eqn_errs, sector_data,
@@ -168,28 +187,28 @@ for i, sec in enumerate(range(nsec)):
 
 subroot = root + "subsectors"
 
-print(root)
 for sector in planet_sectors:
-    secsubroot = subroot + "/" + sector
+    secsubroot = subdir + "/" + sector
     mcmc_list = glob.glob(secsubroot + "/mcmc/*")
     mcmc_list.sort(key=lambda x: int(re.search(r'subsector(\d+)', x).group(1)))
 
-    for i, phi_file in tqdm(enumerate(mcmc_list)):
-        print(sector, i)
-        print(phi_file)
-        phi_dist = np.load(phi_file, allow_pickle=True)
+    for i, phi_file in enumerate(mcmc_list):
 
-        # print(len(phi_dist["phi_distributions"][0]))
-        # print(f"Planet sector: {planet_sectors[i]}")
+        phi_dist = np.load(phi_file, allow_pickle=True)
+        phi_data = phi_dist['phi_distributions']
 
         all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], 
-                                                                phi_dist["wind_eqn_strings"], 
-                                                                plot=False)
+                                                                        phi_dist["wind_eqn_strings"], 
+                                                                        verbose=False,
+                                                                        truncbound=None, 
+                                                                        sds=sector, 
+                                                                        figdir=supfigdir + "subposteriors/")
+
+        print(all_latitudes, all_standard_devs)
 
         if os.path.exists(secsubroot + "/latitudes/") == False:
             os.makedirs(secsubroot + "/latitudes/")
-
         np.savez(secsubroot + "/latitudes/" + f"{sector}_sub{i}_latitude_solutions.npz", 
                     lat=np.array(all_latitudes, dtype=object), 
                     std=np.array(all_standard_devs, dtype=object), 
-                    allow_pickle=True) #   mcmc_list.append(np.load(mcmc_dir + f"{sector}_phi_distributions.npz", allow_pickle=True))
+                    allow_pickle=True) 
