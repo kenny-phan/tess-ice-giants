@@ -169,7 +169,13 @@ for i, phi_dist in enumerate(mcmc_list):
 # phi_dist = mcmc_list[1]
     print(f"Planet sector: {planet_sectors[i]}")
 
-    all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], phi_dist["wind_eqn_strings"], plot=False)
-
+    all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], 
+                                                             phi_dist["wind_eqn_strings"], 
+                                                             truncbound=[0,90],
+                                                             n_bins=50,
+                                                             floor_frac=0.01,
+                                                             figdir=supfigdir,
+                                                             sds=planet_sectors[i],
+                                                             verbose=True)
     np.savez(save_dir + f"{planet_sectors[i]}_latitude_solutions.npz", 
                 lat=np.array(all_latitudes, dtype=object), std=np.array(all_standard_devs, dtype=object), allow_pickle=True)

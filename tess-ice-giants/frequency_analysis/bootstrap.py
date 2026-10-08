@@ -250,7 +250,9 @@ def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percen
     n_data = len(time) 
     freq_grid = np.linspace(1/max_period, 1/min_period, n_freqs)
     np.random.seed(42)
-    
+    if figdir:
+        fig, ax = plt.subplots(figsize=(10, 6))   # <-- new figure
+
     for i in tqdm(range(n_bootstraps)): 
         sample_indices = np.random.choice(n_data, size=int(boot_percent*n_data), replace=True) 
         sample_time = time[sample_indices] 
@@ -273,7 +275,6 @@ def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percen
         if figdir and i in range(0, n_bootstraps, n_plot):
             os.makedirs(figdir, exist_ok=True)
 
-            fig, ax = plt.subplots(figsize=(10, 6))   # <-- new figure
             ax.plot(1/freq_grid, power, color='gray', alpha=0.5)
             ax.axhline(fap, color='red', linestyle='--',
                     label=f'FAP={fap_level * 100}%' if i == 0 else None)
@@ -281,6 +282,7 @@ def bootstrap_peak_periods(time, flux, fap_level, n_bootstraps=1000, boot_percen
             ax.set_ylabel("Power")
             ax.legend()
         
+    if figdir:
         fig.savefig(os.path.join(figdir, f"{sds}bootstrap.png"), dpi=dpi)
 
     if len(peak_periods) == 0:
@@ -343,9 +345,10 @@ def chi2_test(observed, expected, floor_frac=0.01):
     expected = np.clip(expected, floor, None)
     return np.sum((observed - expected) ** 2 / expected)
 
-def get_hist(samples):
+def get_hist(samples, n_bins=None):
     # Create histogram bins for observed data
-    n_bins = int(np.sqrt(len(samples)))  # Sturges' rule alternative
+    if n_bins is None:
+        n_bins = int(np.sqrt(len(samples)))  # Sturges' rule alternative
     observed_freq, bin_edges = np.histogram(samples, bins=n_bins, density=False)
     observed_freq = np.array(observed_freq, dtype=float)
     zeromask = (observed_freq == 0)
@@ -355,10 +358,12 @@ def get_hist(samples):
     observed_freq = np.interp(bin_centers, bin_centers[~zeromask], observed_freq[~zeromask])
     return n_bins, bin_centers, bin_edges, observed_freq
 
-def classify_posterior(samples, truncbound=None, verbose=False):
+def classify_posterior(samples, truncbound=None, 
+                       n_bins=None,
+                       floor_frac=0.01, verbose=False):
     
     samples = np.asarray(samples).ravel()
-    _, bin_centers, bin_edges, observed_freq = get_hist(samples)
+    _, bin_centers, bin_edges, observed_freq = get_hist(samples, n_bins=n_bins)
 
     # plt.plot(bin_centers, observed_freq)
     # plt.yscale('log')
@@ -393,7 +398,7 @@ def classify_posterior(samples, truncbound=None, verbose=False):
     bimeans, bistds, biweights, x_fit, biexpected_freq = fit_bimodal_gaussian(bin_centers, observed_freq)
 
     biexpected_freq *= N * dx
-    bichi2_stat = chi2_test(observed_freq, biexpected_freq)
+    bichi2_stat = chi2_test(observed_freq, biexpected_freq, floor_frac=floor_frac)
     # bichi2_stat = (0, bichi2_stat[1])
     sep = abs(bimeans[1] - bimeans[0])
     width = np.max(bistds)
@@ -411,7 +416,7 @@ def classify_posterior(samples, truncbound=None, verbose=False):
 
     # 1. Normal distribution
     # normexpected_freq = norm.pdf(bin_centers, normmean, normstd) * N * dx        
-    normchi2_stat = chi2_test(observed_freq, normexpected_freq)
+    normchi2_stat = chi2_test(observed_freq, normexpected_freq, floor_frac=floor_frac)
     add_result('normal', normchi2_stat, 2,
                {'mean': normmean, 'std': normstd}, normexpected_freq)
 
@@ -426,7 +431,7 @@ def classify_posterior(samples, truncbound=None, verbose=False):
         a = (truncbound[0] - mu_hat_0) / sigma_hat_0
         b = np.inf
         trunc0expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_0, sigma_hat_0) * N * dx
-        trunc0chi2_stat = chi2_test(observed_freq, trunc0expected_freq)
+        trunc0chi2_stat = chi2_test(observed_freq, trunc0expected_freq, floor_frac=floor_frac)
 
         add_result('truncated_at_0', trunc0chi2_stat, 2, 
                    {'mean': mu_hat_0, 'std': sigma_hat_0}, trunc0expected_freq)
@@ -435,7 +440,7 @@ def classify_posterior(samples, truncbound=None, verbose=False):
         a = -np.inf
         b = (truncbound[1] - mu_hat_1) / sigma_hat_1
         trunc1expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_1, sigma_hat_1) * N * dx
-        trunc1chi2_stat = chi2_test(observed_freq, trunc1expected_freq)
+        trunc1chi2_stat = chi2_test(observed_freq, trunc1expected_freq, floor_frac=floor_frac)
 
         add_result('truncated_at_1', trunc1chi2_stat, 2, 
                    {'mean': mu_hat_1, 'std': sigma_hat_1}, trunc1expected_freq)
@@ -448,7 +453,7 @@ def classify_posterior(samples, truncbound=None, verbose=False):
     median_q = skewnorm.ppf(0.50, a_hat, loc=xi_hat, scale=omega_hat)
     upper  = skewnorm.ppf(0.84, a_hat, loc=xi_hat, scale=omega_hat)
 
-    skewchi2_stat = chi2_test(observed_freq, skewexpected_freq)
+    skewchi2_stat = chi2_test(observed_freq, skewexpected_freq, floor_frac=floor_frac)
     add_result('skew_normal', skewchi2_stat, 3,
                {'mean': median_q,
                 'std': [median_q - lower, upper - median_q],
@@ -481,7 +486,10 @@ def cluster_peaks(peaks, sds="sector",
                   figdir=None, n_cols=2, 
                   n_bootstraps=10000, 
                   pass_frac=0.8, 
-                  truncbound=None, verbose=False):
+                  truncbound=None, 
+                  floor_frac=0.01, 
+                  n_bins=None,
+                  verbose=False):
 
     os.makedirs(figdir, exist_ok=True)
     debug_print(verbose, f"running dbscan with eps={eps}, min_samples={min_samples}")
@@ -528,6 +536,8 @@ def cluster_peaks(peaks, sds="sector",
         debug_print(verbose, f"Classifying Cluster {label}: count={count}, points={cluster_points}")
         classification, mean, std, weights, x, pdf = classify_posterior(cluster_points, 
                                                                     truncbound=truncbound, 
+                                                                    n_bins=n_bins, 
+                                                                    floor_frac=floor_frac, 
                                                                     verbose=verbose)
         
         if figdir:

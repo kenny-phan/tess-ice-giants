@@ -131,6 +131,8 @@ def solve_intersection_at_phi(wind_eqn, freq_eqn, bounds=(0.01, 2), phi=0.0):
 #distribution is one wind equation's latitude posterior samples (e.g. uranus s44 sromovsky2012N)
 def parse_classifications(distribution, 
                           truncbound=[0, 90], 
+                          floor_frac=0.01, 
+                          n_bins=None, 
                           sds="sector",
                           figdir=None, 
                           verbose=False):
@@ -140,7 +142,11 @@ def parse_classifications(distribution,
     for i, dist in enumerate(distribution):
         dist = np.asarray(dist, dtype=float).ravel()   # ensure numeric
         
-        classification_result = classify_posterior(dist, truncbound=truncbound
+        classification_result = classify_posterior(dist, 
+                                                   truncbound=truncbound, 
+                                                   n_bins=n_bins, 
+                                                   floor_frac=floor_frac, 
+                                                   verbose=verbose
                                                 #    boundaries=boundaries, 
                                                 #    min_prominence=min_prominence,
                                                 #    allow_skew_truc=allow_skew_truc, 
@@ -172,7 +178,7 @@ def parse_classifications(distribution,
             # Include a stable per-figure identifier. `sds` alone is not unique
             # across the loop, so add the index and a distinguishing tag.
             # If you have per-distribution labels, use those instead.
-            fname = f"post{i:04d}_{classification_type}.png"
+            fname = f"{sds}_{i}_{classification_type}.png"
             fpath = os.path.join(save_dir, fname)
             fig.savefig(fpath, bbox_inches='tight')
 
@@ -207,6 +213,8 @@ def fit_all_distributions(phi_distributions_list,
                           wind_eqn_strings, 
                           print_table=True,
                           truncbound=[0,90], 
+                          n_bins=None,
+                          floor_frac=0.01, 
                           sds="sector",
                           figdir=None, 
                           verbose=False):
@@ -217,7 +225,9 @@ def fit_all_distributions(phi_distributions_list,
         print(f"Processing Wind Equation: {wind_eqn_strings[i]}")
         latitudes, standard_devs = parse_classifications(phi_distributions, 
                                                          truncbound=truncbound,
-                                                         sds=sds,
+                                                         n_bins=n_bins,
+                                                         floor_frac=floor_frac,
+                                                         sds=sds + f"_dist{i}",
                                                          figdir=figdir,  
                                                          verbose=verbose)
         all_latitudes.append(latitudes)

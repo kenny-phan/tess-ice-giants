@@ -15,7 +15,7 @@ from mcmc import save_mcmc, fit_all_distributions
 root = '/home/ktp9/TESSNeptune24/tess-ice-giants/'
 data_dir = root + 'final_data/'
 
-bps, pps = 50, 10
+bps, pps = 50, 15
 print(f"bps: {bps}, pps: {pps}")
 bpps_dir = f'bps{bps}_pps{pps}/'
 
@@ -199,7 +199,9 @@ for sector in planet_sectors:
 
         all_latitudes, all_standard_devs = fit_all_distributions(phi_dist["phi_distributions"], 
                                                                         phi_dist["wind_eqn_strings"], 
-                                                                        verbose=False,
+                                                                        verbose=False, 
+                                                                        n_bins=50, 
+                                                                        floor_frac=0.01,
                                                                         truncbound=None, 
                                                                         sds=sector, 
                                                                         figdir=supfigdir + "subposteriors/")
