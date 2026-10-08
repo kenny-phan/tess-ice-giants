@@ -137,7 +137,7 @@ def plot_lightcurve_and_periodogram(planet,
                                     sector_list, 
                                     flux_string='raw', root=None, 
                                     xlim=[8,20], log=True, period_limits=[17.52, 18.72]):
-
+    os.makedirs(root, exist_ok=True)
     # Create the figure
     fig = plt.figure(figsize=(20, 12))        
     # Define a 2-row, 3-column grid
@@ -375,6 +375,141 @@ def plot_subsec_latsols(ax, subseclat, subsecstd, eqn,
                             yerr=std, 
                             fmt=fmt, color=color,
                             capsize=3, alpha=alpha, markersize=markersize)
+
+def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors, 
+                          title, planet, ss_lats, ss_stds, sector=None, 
+                          vmin_percentile=None, vmax_percentile=None, 
+                          markersize=10, subalpha=0.75):
+
+    cmap = mpl.colormaps['cool']
+
+    # Take colors at regular intervals spanning the colormap.
+    subcolors = cmap(np.linspace(0, 1, 10))
+
+    binary = sns.color_palette("viridis", as_cmap=True)
+    #plt.style.use('viridis')
+
+    phi = np.linspace(-np.pi/2, np.pi/2, 361)
+
+    fig = plt.figure(figsize=(10, 6))
+    if sector is not None:
+        fig.suptitle(f"Sector {sector}, {title}", fontsize=16, x=0.05, horizontalalignment='left')
+
+    gs = gridspec.GridSpec(2, 6, height_ratios=[1, 1])
+
+    ax = fig.add_subplot(gs[0:2, 0:6])
+    ax.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    if planet == "Neptune":
+        # phi = np.linspace(-np.pi/2, 0, 181)
+        lat, stds = np.array(lats), np.array(stds)
+        plot_neptune_equations(ax, phi, plot_colors, h_band=False)
+
+        plot_subsec_latsols(ax, ss_lats, ss_stds, eqns[0], fmt='o', 
+                            colors=subcolors, markersize=markersize,
+                            alpha=subalpha)
+        plot_subsec_latsols(ax, ss_lats, ss_stds, eqns[0], flip=True, fmt='o', 
+                            colors=subcolors, markersize=markersize,
+                            alpha=subalpha)
+        for i, equation in enumerate(eqns):
+            plot_lat_solutions(ax, lat[i], stds[i], equation, 42, plot_colors[i], markersize=markersize)
+        ax.set_xlim(-500, 400)
+
+    elif planet == "Uranus":
+        plot_uranus_equations(ax, phi, plot_colors)
+        markers = ["o", "^", "s"]
+        for i, (latsec, stdsec) in enumerate(zip(ss_lats, ss_stds)):
+            plot_subsec_latsols(ax, latsec[0], stdsec[0], eqns[0], fmt=markers[i], 
+                                colors=subcolors, markersize=markersize,
+                                alpha=subalpha)
+            plot_subsec_latsols(ax, latsec[1], stdsec[1], eqns[1], flip=True, fmt=markers[i], 
+                                colors=subcolors, markersize=markersize,
+                                alpha=subalpha)
+
+        for j, lat in enumerate(lats):
+            for i, equation in enumerate(eqns):
+                plot_lat_solutions(ax, lat[i], stds[j][i], equation, 42, plot_colors[i], even=False, marker=markers[j], markersize=markersize)
+        ax.set_xlim(-100, 300)
+
+    ax.set_ylim(-90, 90)
+
+    ax.set_xlabel(r"Wind Speed $[ms^{-1}]$")
+    ax.xaxis.set_label_position('top') 
+
+    xlim, ylim = ax.get_xlim(), ax.get_ylim()
+
+    x1n = np.linspace(-180, 181, 30)
+
+    def forward(x):
+        return np.interp(x, x1n, np.linspace(xlim[0], xlim[1], 30))
+
+    def inverse(x):
+        return np.interp(x, np.linspace(xlim[0], xlim[1], 30), x1n)
+
+    if planet == "Neptune":
+        # mosaic_data = mosaic_data[180:360, :]
+        mosaic_data = mosaic_data/np.nanmean(mosaic_data)
+        im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
+                       vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
+        
+        ax.legend(loc='center right')
+    elif planet == "Uranus":
+        # mosaic_data = mosaic_data[0:180, :]
+        mosaic_data = mosaic_data/np.nanmean(mosaic_data)
+        im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
+                       vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
+        ax.legend(loc='center right')
+        # ax.hlines([35, 40], xmin=xlim[0], xmax=xlim[1], colors='white', linestyles='dashed', linewidth=1.5, alpha=0.5)
+    fig.colorbar(im, cax=cax, label=r"Normalized Flux $[e^{-}s^{-1}]$")
+    ax.set_ylabel(r"Latitude $[{^\circ}]$")
+
+    secax = ax.secondary_xaxis("bottom", functions=(inverse, forward))
+
+    secax.set_xticks(np.linspace(-180, 180, 13))  # longitude ticks
+    secax.set_xticklabels([f"{val:.0f}" for val in np.linspace(-180, 180, 13)])
+    secax.set_xlabel(r"Longitude $[{^\circ}]$")
+
+    if title:
+        fig.suptitle(title, fontsize=36/2)
+    # return all_bright_points
+
+def plot_summed_mosaics(summed_data, eqns, lats, stds, plot_colors, 
+                        planet, ss_lats, ss_stds, sector=None, save=False, log=True, clip_percentile=97, 
+                        gradient=False, vmin_percentile=None, vmax_percentile=None, markersize=10):
+    # summed_data = None
+    # for dir in directories:
+    #     for file in os.listdir(dir):
+    #         if file.endswith('.fits'):
+    #             #print(file)
+    #             hdul = fits.open(os.path.join(dir, file))
+    #             data = hdul[0].data
+    #             summed_data = data if summed_data is None else summed_data + data
+    #             hdul.close()
+
+    if gradient:
+        lat_gradient = np.abs(np.gradient(summed_data)[1])
+    else: 
+        lat_gradient = summed_data
+        
+    #clip lat_gradient at 99th percentile for better visualization
+    lat_gradient_clipped = np.clip(lat_gradient, 0, np.percentile(lat_gradient, clip_percentile))
+
+    # set max values of lat_gradient to the mean 
+    lat_gradient_clipped[lat_gradient_clipped == np.percentile(lat_gradient, clip_percentile)] = np.median(lat_gradient)
+
+    title = None # (f"{planet} {sector}")
+    plot_mosaic_latitudes(lat_gradient_clipped, eqns, lats, stds,
+                          plot_colors, title, planet, ss_lats, ss_stds,
+                          sector=None,vmin_percentile=vmin_percentile, vmax_percentile=vmax_percentile, 
+                          markersize=markersize)
+    
+    plt.tight_layout()
+    if save:
+        plt.savefig(f"{planet}_{sector}_opal.png", transparent=True, dpi=600)
+    else:
+        plt.show()
 
 # def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors, 
 #                           title, planet, sector=None, vmin_percentile=None, vmax_percentile=None):
@@ -753,3 +888,29 @@ def plot_subsector_heatmap(planet,
     cb1 = mpl.colorbar.ColorbarBase(cbar_ax, cmap="coolwarm", norm=norm)
 
     plt.show()
+
+def sort_lat_std(latitudes, standard_deviations):
+    sorted_latitudes = np.empty_like(latitudes, dtype=object)
+    sorted_standard_deviations = np.empty_like(standard_deviations, dtype=object)
+    for j in range(latitudes.shape[0]):
+        lat_arr = latitudes[j, :]
+        std_arr = standard_deviations[j, :]
+        sorted_lat_arr = np.empty_like(lat_arr)
+        sorted_std_arr = np.empty_like(std_arr)
+
+        for k, (sublat, substd) in enumerate(zip(lat_arr, std_arr)):
+            if len(sublat) < 1:
+                sorted_lat_arr[k] = sublat
+                sorted_std_arr[k] = substd
+            else:
+                sorted_indices = [np.argsort(sublat[i]) for i in range(len(sublat))]
+
+                sublat_sorted = [sublat[i][sorted_indices[i]] for i in range(len(sublat))]
+                substd_sorted = [substd[i][sorted_indices[i]] for i in range(len(substd))]
+                sorted_lat_arr[k] = sublat_sorted
+                sorted_std_arr[k] = substd_sorted
+
+        sorted_latitudes[j, :] = sorted_lat_arr
+        sorted_standard_deviations[j, :] = sorted_std_arr
+
+    return sorted_latitudes, sorted_standard_deviations
