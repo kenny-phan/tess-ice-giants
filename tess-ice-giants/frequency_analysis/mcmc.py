@@ -10,6 +10,7 @@ from scipy.optimize import minimize_scalar, root_scalar
 from bootstrap import classify_posterior
 from fullsector import debug_print
 from wind_equations import RHS, U_PHI, sigma
+from figures import dpi
 
 # Log-likelihood function
 # phi radians, f_obs 1/days, f_err 1/days, model_eqn m/s
@@ -130,12 +131,13 @@ def solve_intersection_at_phi(wind_eqn, freq_eqn, bounds=(0.01, 2), phi=0.0):
 #distribution is one wind equation's latitude posterior samples (e.g. uranus s44 sromovsky2012N)
 def parse_classifications(distribution, 
                           truncbound=[0, 90], 
-                          plot=True, 
+                          sds="sector",
+                          figdir=None, 
                           verbose=False):
     all_means = []
     all_stds = []
 
-    for dist in distribution:
+    for i, dist in enumerate(distribution):
         dist = np.asarray(dist, dtype=float).ravel()   # ensure numeric
         
         classification_result = classify_posterior(dist, truncbound=truncbound
@@ -148,41 +150,54 @@ def parse_classifications(distribution,
 
         all_means.append(classification_result[1])
         all_stds.append(classification_result[2])
-
-        if plot:
+        
+        if figdir is not None:
             classification_type = classification_result[0]
-            mean_val = classification_result[1]
-            param_val = classification_result[2]
-            
-            # Plot histogram
-            x = np.linspace(dist.min(), dist.max(), 200)
-            plt.hist(dist, bins=30, density=True, alpha=0.7, label='Data')
-            
-            # Plot PDF based on classification type
-            if classification_type == "Gaussian":
-                pdf = norm.pdf(x, mean_val, param_val)
-                plt.plot(x, pdf, 'r-', linewidth=2, label=f'Gaussian: μ={mean_val:.3f}, σ={param_val:.3f}')
-            
-            elif classification_type == "Truncated Gaussian":
-                a, b = (truncbound[0] - mean_val) / param_val, (truncbound[1] - mean_val) / param_val
-                pdf = truncnorm.pdf(x, a, b, loc=mean_val, scale=param_val)
-                plt.plot(x, pdf, 'r-', linewidth=2, label=f'Truncated Gaussian: μ={mean_val:.3f}, σ={param_val:.3f}')
-            
-            elif classification_type == "Skewed":
-                plt.axvline(mean_val, color='r', linestyle='--', linewidth=2, 
-                        label=f'Median={mean_val:.3f}, 68% CI=[{mean_val-param_val[0]:.3f}, {mean_val+param_val[1]:.3f}]')
-            
-            elif classification_type == "Bimodal":
-                pdf = 0.5 * norm.pdf(x, mean_val[0], param_val[0]) + 0.5 * norm.pdf(x, mean_val[1], param_val[1])
-                plt.plot(x, pdf, 'r-', linewidth=2, 
-                        label=f'Bimodal: μ1={mean_val[0]:.3f}, σ1={param_val[0]:.3f} | μ2={mean_val[1]:.3f}, σ2={param_val[1]:.3f}')
-            
-            plt.xlabel('Value')
-            plt.ylabel('Density')
-            plt.title(f'Classification: {classification_type}')
-            plt.legend()
-            plt.show()
+            pdfx, pdfy = classification_result[4], classification_result[5]
+            save_dir = os.path.join(figdir, "lat_posteriors")
+            os.makedirs(save_dir, exist_ok=True)
 
+            # figsize + DPI controls the output size; without this, every
+            # iteration reuses whatever figure pyplot has open.
+            fig, ax = plt.subplots(figsize=(6, 4), dpi=dpi)
+
+            ax.hist(dist, bins=30, alpha=0.7, label='Data', density=False)
+            ax.plot(pdfx, pdfy, color='red', label='Fit')
+
+            ax.set_xlabel('Value')
+            ax.set_ylabel('Count')
+            ax.set_title(f'Classification: {classification_type}')
+            ax.legend()
+
+            # Include a stable per-figure identifier. `sds` alone is not unique
+            # across the loop, so add the index and a distinguishing tag.
+            # If you have per-distribution labels, use those instead.
+            fname = f"post{i:04d}_{classification_type}.png"
+            fpath = os.path.join(save_dir, fname)
+            fig.savefig(fpath, bbox_inches='tight')
+
+            # Critical: free the figure so the next iteration starts clean.
+            plt.close(fig)
+                    
+            # Plot PDF based on classification type
+            # if classification_type == "Gaussian":
+            #     pdf = norm.pdf(x, mean_val, param_val)
+            #     plt.plot(x, pdf, 'r-', linewidth=2, label=f'Gaussian: μ={mean_val:.3f}, σ={param_val:.3f}')
+            
+            # elif classification_type == "Truncated Gaussian":
+            #     a, b = (truncbound[0] - mean_val) / param_val, (truncbound[1] - mean_val) / param_val
+            #     pdf = truncnorm.pdf(x, a, b, loc=mean_val, scale=param_val)
+            #     plt.plot(x, pdf, 'r-', linewidth=2, label=f'Truncated Gaussian: μ={mean_val:.3f}, σ={param_val:.3f}')
+            
+            # elif classification_type == "Skewed":
+            #     plt.axvline(mean_val, color='r', linestyle='--', linewidth=2, 
+            #             label=f'Median={mean_val:.3f}, 68% CI=[{mean_val-param_val[0]:.3f}, {mean_val+param_val[1]:.3f}]')
+            
+            # elif classification_type == "Bimodal":
+            #     pdf = 0.5 * norm.pdf(x, mean_val[0], param_val[0]) + 0.5 * norm.pdf(x, mean_val[1], param_val[1])
+            #     plt.plot(x, pdf, 'r-', linewidth=2, 
+            #             label=f'Bimodal: μ1={mean_val[0]:.3f}, σ1={param_val[0]:.3f} | μ2={mean_val[1]:.3f}, σ2={param_val[1]:.3f}')
+        
 
     return all_means, all_stds
 
@@ -190,8 +205,10 @@ def parse_classifications(distribution,
 # phi_distributions_list: one sector's data
 def fit_all_distributions(phi_distributions_list, 
                           wind_eqn_strings, 
-                          plot=False, 
-                          print_table=True, 
+                          print_table=True,
+                          truncbound=[0,90], 
+                          sds="sector",
+                          figdir=None, 
                           verbose=False):
     all_latitudes = []
     all_standard_devs = []
@@ -199,8 +216,10 @@ def fit_all_distributions(phi_distributions_list,
     for i, phi_distributions in enumerate(phi_distributions_list):
         print(f"Processing Wind Equation: {wind_eqn_strings[i]}")
         latitudes, standard_devs = parse_classifications(phi_distributions, 
-                                                         truncbound=[0, 90], 
-                                                         verbose=verbose, plot=plot)
+                                                         truncbound=truncbound,
+                                                         sds=sds,
+                                                         figdir=figdir,  
+                                                         verbose=verbose)
         all_latitudes.append(latitudes)
         all_standard_devs.append(standard_devs)
         

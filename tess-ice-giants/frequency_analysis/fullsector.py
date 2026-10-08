@@ -8,41 +8,6 @@ def debug_print(verbose, *args):
     if verbose:
         print(*args)
 
-# def half_width_half_max(frequency, power, peak_freqs, peak_pows, threshold, freq_limit=None, verbose=False):
-#     hwhm_arr = []
-#     for i, pow in enumerate(peak_pows):
-#         half_max = pow/2
-#         center_freq = peak_freqs[i]
-
-#         if freq_limit:
-#             if center_freq < freq_limit:
-#                 debug_print(verbose, f"Frequency {center_freq} is smaller than the freqeuncy limit.")
-#                 return 0
-
-#         debug_print(verbose, "center freq", center_freq)
-#         x_args = np.where(np.abs(power - half_max) < threshold)
-#         x_vals = frequency[x_args]
-#         # print("x vals", x_vals)
-#         debug_print(verbose, f"There are {len(x_vals)} intersections between the power spectrum and half max of this peak.")
-#         lower_freq_arg = np.argmin(np.abs(center_freq - x_vals[x_vals < center_freq]))
-#         upper_freq_arg = np.argmin(np.abs(center_freq - x_vals[x_vals > center_freq]))
-
-#         lower_freq = x_vals[x_vals < center_freq][lower_freq_arg]
-#         upper_freq = x_vals[x_vals > center_freq][upper_freq_arg]
-#         debug_print(verbose, "lower, upper freqs", lower_freq, upper_freq)
-#         fwhm = upper_freq - lower_freq
-#         hwhm = fwhm/2
-#         hwhm_arr.append(hwhm)
-    
-#     return np.array(hwhm_arr)
-
-# def sigma_f_gregory(hwhm, flux, verbose=False):
-#     snr = 1 / np.std(flux)
-#     debug_print(verbose, "snr", snr)
-#     std = hwhm * np.sqrt(2/(len(flux) * snr**2))
-#     debug_print(verbose, "std", std)
-#     return std
-
 def nyquist_from_cadence(cadences):
     return 1 / (2 * cadences)
 

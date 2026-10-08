@@ -477,17 +477,8 @@ def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors,
     # return all_bright_points
 
 def plot_summed_mosaics(summed_data, eqns, lats, stds, plot_colors, 
-                        planet, ss_lats, ss_stds, sector=None, save=False, log=True, clip_percentile=97, 
+                        planet, ss_lats, ss_stds, sector=None, savedir=None, clip_percentile=97, 
                         gradient=False, vmin_percentile=None, vmax_percentile=None, markersize=10):
-    # summed_data = None
-    # for dir in directories:
-    #     for file in os.listdir(dir):
-    #         if file.endswith('.fits'):
-    #             #print(file)
-    #             hdul = fits.open(os.path.join(dir, file))
-    #             data = hdul[0].data
-    #             summed_data = data if summed_data is None else summed_data + data
-    #             hdul.close()
 
     if gradient:
         lat_gradient = np.abs(np.gradient(summed_data)[1])
@@ -507,8 +498,8 @@ def plot_summed_mosaics(summed_data, eqns, lats, stds, plot_colors,
                           markersize=markersize)
     
     plt.tight_layout()
-    if save:
-        plt.savefig(f"{planet}_{sector}_opal.png", transparent=True, dpi=600)
+    if savedir is not None:
+        plt.savefig(savedir + f"{planet}_{sector}_opal.png", transparent=True, dpi=dpi)
     else:
         plt.show()
 
