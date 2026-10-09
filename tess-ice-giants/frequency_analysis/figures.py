@@ -455,15 +455,100 @@ def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors,
         im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
                        vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
         
-        ax.legend(loc='center right')
+        # --- Draw legend WITHOUT its own frame so we can size a unified box ---
+        leg = ax.legend(loc='center right', frameon=False)
     elif planet == "Uranus":
         # mosaic_data = mosaic_data[0:180, :]
         mosaic_data = mosaic_data/np.nanmean(mosaic_data)
         im = ax.imshow(mosaic_data, extent=[xlim[0], xlim[1], ylim[0], ylim[1]], aspect='auto', cmap=binary, 
                        vmin=np.percentile(mosaic_data, vmin_percentile), vmax=np.percentile(mosaic_data, vmax_percentile))
-        ax.legend(loc='center right')
+        leg = ax.legend(loc='center right', frameon=False)
         # ax.hlines([35, 40], xmin=xlim[0], xmax=xlim[1], colors='white', linestyles='dashed', linewidth=1.5, alpha=0.5)
+
     fig.colorbar(im, cax=cax, label=r"Normalized Flux $[e^{-}s^{-1}]$")
+    
+    # --- Discrete colorbar for subsector indices (cool colormap) -----------
+    # Horizontal, 10 discrete segments, tick labels centered 1..10, no ticks.
+    n_subs = 10
+
+    cool_cmap = mpl.colormaps['cool']
+    discrete_colors = cool_cmap(np.linspace(0, 1, n_subs))
+    discrete_cmap = mpl.colors.ListedColormap(discrete_colors)
+
+    if planet == "Neptune":
+        cax2 = ax.inset_axes([0.70, 0.35, 0.25, 0.0225])
+    elif planet == "Uranus":
+        cax2 = ax.inset_axes([0.70, 0.40, 0.25, 0.0225])
+
+    bounds = np.arange(n_subs + 1)
+    norm = mpl.colors.BoundaryNorm(bounds, discrete_cmap.N)
+
+    cb_subs = mpl.colorbar.ColorbarBase(
+        cax2, cmap=discrete_cmap, norm=norm,
+        boundaries=bounds,
+        ticks=[],
+        spacing='uniform',
+        orientation='horizontal',
+    )
+
+    # Numbers centered inside each segment (all white)
+    for k in range(n_subs):
+        cb_subs.ax.text(
+            k + 0.5, 0.425, str(k + 1),
+            ha='center', va='center',
+            fontsize=7, color='black',
+            transform=cb_subs.ax.transData,
+            clip_on=False,
+        )
+
+    cb_subs.outline.set_edgecolor('none') # or make it invisible
+
+    cb_subs.ax.xaxis.set_ticks_position('none')
+    cb_subs.ax.tick_params(axis='x', which='both', length=0)
+    cb_subs.ax.xaxis.set_label_position('top')
+    cb_subs.set_label("Subsector", fontsize=10, labelpad=2.5)
+    cb_subs.outline.set_linewidth(0.5)
+    # ------------------------------------------------------------------
+    # Unified white box around the legend AND the colorbar.
+    # We need the legend bbox (from the invisible-frame legend) and the
+    # colorbar's axes bbox to compute the enclosing rectangle.
+    # ------------------------------------------------------------------
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+
+    # Legend bbox in axes-fraction coordinates
+    leg_bbox_ax = leg.get_window_extent(renderer).transformed(ax.transAxes.inverted())
+
+    # Colorbar axes bbox in axes-fraction coordinates of `ax`
+    cb_bbox_disp = cax2.get_window_extent(renderer)
+    cb_bbox_ax   = cb_bbox_disp.transformed(ax.transAxes.inverted())
+
+    # Take the union of the two bboxes and add a bit of padding
+    pad = 0.012
+    box_x0 = min(leg_bbox_ax.x0, cb_bbox_ax.x0) #- pad
+    box_x1 = max(leg_bbox_ax.x1, cb_bbox_ax.x1) #+ pad
+    box_y0 = min(leg_bbox_ax.y0, cb_bbox_ax.y0) - pad
+    box_y1 = max(leg_bbox_ax.y1, cb_bbox_ax.y1) #+ pad
+
+    # Match the default matplotlib legend look:
+    #   - facecolor  = light gray ('0.90' is matplotlib's default)
+    #   - edgecolor  = gray
+    #   - rounded corners via FancyBboxPatch 'round'
+    #   - alpha      = 0.8 (matplotlib's default framealpha)
+    unified = mpl.patches.FancyBboxPatch(
+        (box_x0, box_y0),
+        box_x1 - box_x0,
+        box_y1 - box_y0,
+        boxstyle="round,pad=0,rounding_size=0.015",
+        transform=ax.transAxes,
+        facecolor='0.90',       # matplotlib default legend background
+        edgecolor='0.80',       # matplotlib default legend edge
+        linewidth=0.8,
+        alpha=0.8,              # matplotlib default framealpha
+        zorder=3,
+    )
+    ax.add_patch(unified)
+
     ax.set_ylabel(r"Latitude $[{^\circ}]$")
 
     secax = ax.secondary_xaxis("bottom", functions=(inverse, forward))
@@ -474,7 +559,8 @@ def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors,
 
     if title:
         fig.suptitle(title, fontsize=36/2)
-    # return all_bright_points
+
+    return fig
 
 def plot_summed_mosaics(summed_data, eqns, lats, stds, plot_colors, 
                         planet, ss_lats, ss_stds, sector=None, savedir=None, clip_percentile=97, 
@@ -544,7 +630,6 @@ def plot_split_periodograms(axs,
     axs.figure.canvas.draw()
     axs.set_xlim(xlim[0], xlim[1])
     axs.set_xlabel("Period [hours]")
-
 def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, min_per, max_per,
                  btjd_offset=2400, round_decimals=1,
                  gap_factor=3, vmin=0, vmax=1, output_table=False,
@@ -660,6 +745,7 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
                  bbox=dict(facecolor="white", edgecolor="none", alpha=0.8))
 
     return np.array(peak_freqs), np.array(periods), np.array(stretch_power), np.array(gap_time_ranges), stretched_rows
+
 
 def plot_subsector_heatmap(planet, 
                            subtimes, subfluxes, 
