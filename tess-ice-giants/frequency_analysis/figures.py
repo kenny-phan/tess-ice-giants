@@ -294,7 +294,7 @@ def sort_ur_to_eqns(lat_arr, std_arr):
     new_std_arr = np.vstack((np.concatenate(std_arr[0:2]), np.concatenate(std_arr[2:4])))
     return new_lat_arr, new_std_arr
 
-def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False, even=True, marker='o', markersize=5):
+def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False, even=True, marker='o', markersize=5, alpha=1):
     print("latitudes", latitudes, "stds", std)
     
     for i, latitude in enumerate(latitudes):
@@ -323,7 +323,8 @@ def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False
             color=color,
             capsize=3,
             label=label,
-            markersize=markersize
+            markersize=markersize,
+            alpha=alpha
         )
 
         if even:
@@ -335,7 +336,8 @@ def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False
                 fmt=marker,
                 color=color,
                 capsize=3,
-                markersize=markersize
+                markersize=markersize,
+                alpha=alpha
             )
 
 def make_rows_negative(lat_array, rows_to_negate):
@@ -384,6 +386,120 @@ def plot_subsec_latsols(ax, subseclat, subsecstd, eqn,
                             fmt=fmt, color=color,
                             capsize=3, alpha=alpha, markersize=markersize)
 
+def merge_hemisphere_rows(arr):
+    """
+    Merge rows [0,1] into a single row and rows [2,3] into a single row.
+    
+    Handles object-dtype arrays where entries may be scalars or lists.
+    
+    Parameters
+    ----------
+    arr : np.ndarray, shape (4, N), dtype=object
+        Rows 0,1 are one equation's N and S solutions; rows 2,3 are the other's.
+    
+    Returns
+    -------
+    np.ndarray, shape (2, M), dtype=object
+        Row 0 = concat(arr[0], arr[1]); Row 1 = concat(arr[2], arr[3]).
+    """
+    def flatten_row(row):
+        """Flatten a single row into a list of scalars."""
+        out = []
+        for entry in row:
+            if entry is None:
+                continue
+            if np.isscalar(entry):
+                out.append(entry)
+            else:
+                # entry is a list / array / nested sequence
+                out.extend(np.atleast_1d(entry).tolist())
+        return out
+
+    merged_top    = flatten_row(arr[0]) + flatten_row(arr[1])
+    merged_bottom = flatten_row(arr[2]) + flatten_row(arr[3])
+
+    # Build an object array of shape (2, M) where M is the max length
+    max_len = max(len(merged_top), len(merged_bottom))
+    result = np.empty((2, max_len), dtype=object)
+    result[:] = np.nan
+    result[0, :len(merged_top)]    = merged_top
+    result[1, :len(merged_bottom)] = merged_bottom
+    return result
+
+def _is_pair(cell):
+    """True if cell is a length-2 array/list/tuple (numpy arrays only, per #7)."""
+    return (
+        isinstance(cell, np.ndarray)
+        and cell.ndim == 1
+        and len(cell) == 2
+    )
+
+
+def _is_scalar_container(cell):
+    """True if cell is a length-1 numpy array (treated as scalar)."""
+    return (
+        isinstance(cell, np.ndarray)
+        and cell.ndim == 1
+        and len(cell) == 1
+    )
+
+
+def _column_values(cell):
+    """Return list of numeric values from a cell (scalar → [v], pair → [v0,v1])."""
+    if isinstance(cell, np.ndarray):
+        if cell.ndim == 0:
+            return [float(cell)]
+        return [float(x) for x in cell]
+    return [float(cell)]
+
+
+def take_latsol_closest_to_column_median(lat_array, std_array):
+    """
+    For each pair [v0, v1] in lat_array, pick the element closest to the
+    median of ALL values in the same column (across all rows, both elements
+    of each pair included). Apply the same index choice to std_array.
+
+    Mutates lat_array and std_array in place; also returns them.
+    """
+    # Squeeze out leading/trailing length-1 dims if needed
+    if lat_array.ndim > 2:
+        lat_array = np.squeeze(lat_array)
+        std_array = np.squeeze(std_array)
+
+    n_rows, n_cols = lat_array.shape[:2]
+
+    # --- Pass 1: column medians from ALL values (scalars + both pair elems) ---
+    col_medians = [None] * n_cols
+    for j in range(n_cols):
+        vals = []
+        for i in range(n_rows):
+            vals.extend(_column_values(lat_array[i][j]))
+        if vals:
+            col_medians[j] = float(np.median(vals))
+
+    # --- Pass 2: resolve each pair by nearest element to column median ---
+    for i in range(n_rows):
+        for j in range(n_cols):
+            cell = lat_array[i][j]
+            if not _is_pair(cell):
+                continue
+            med = col_medians[j]
+            if med is None:
+                continue
+
+            d0 = abs(float(cell[0]) - med)
+            d1 = abs(float(cell[1]) - med)
+            k = 0 if d0 <= d1 else 1
+
+            lat_array[i][j] = float(cell[k])
+
+            # Same index into std (only if std cell is a pair)
+            s_cell = std_array[i][j]
+            if _is_pair(s_cell):
+                std_array[i][j] = float(s_cell[k])
+
+    return lat_array, std_array
+
 def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors, 
                           title, planet, ss_lats, ss_stds, sector=None, 
                           vmin_percentile=None, vmax_percentile=None, 
@@ -422,7 +538,8 @@ def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors,
                             colors=subcolors, markersize=markersize,
                             alpha=subalpha)
         for i, equation in enumerate(eqns):
-            plot_lat_solutions(ax, lat[i], stds[i], equation, 42, plot_colors[i], markersize=markersize)
+            plot_lat_solutions(ax, lat[i], stds[i], equation, 42, plot_colors[i], markersize=markersize,
+                            alpha=subalpha)
         ax.set_xlim(-500, 400)
 
     elif planet == "Uranus":
@@ -438,7 +555,9 @@ def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors,
 
         for j, lat in enumerate(lats):
             for i, equation in enumerate(eqns):
-                plot_lat_solutions(ax, lat[i], stds[j][i], equation, 42, plot_colors[i], even=False, marker=markers[j], markersize=markersize)
+                plot_lat_solutions(ax, lat[i], stds[j][i], equation, 42, plot_colors[i], even=False, 
+                                   marker=markers[j], markersize=markersize,
+                            alpha=subalpha)
         ax.set_xlim(-100, 300)
 
     ax.set_ylim(-90, 90)
