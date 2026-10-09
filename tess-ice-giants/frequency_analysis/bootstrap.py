@@ -83,32 +83,20 @@ def fit_bimodal_gaussian(x, y, n_restarts=10):
     w_std = np.sqrt(np.sum(y_pdf * (x - w_mean) ** 2) * dx)
     amp_guess = np.max(y_pdf)
     
-    # Initial guess: split the distribution at the weighted mean
-    # and estimate stats of each half
-    left_mask = x < w_mean
-    right_mask = x >= w_mean
-    
-    def half_stats(mask):
-        if not np.any(mask):
-            return w_mean, w_std
-        xs, ys = x[mask], y_pdf[mask]
-        m = np.sum(xs * ys) / np.sum(ys) if np.sum(ys) > 0 else w_mean
-        s = np.sqrt(np.sum(ys * (xs - m) ** 2) / np.sum(ys)) if np.sum(ys) > 0 else w_std
-        return m, max(s, dx)  # avoid zero std
-    
-    mu1_g, sig1_g = half_stats(left_mask)
-    mu2_g, sig2_g = half_stats(right_mask)
-    
-    # Ensure mu1 < mu2 for consistent sorting
-    if mu1_g > mu2_g:
-        mu1_g, mu2_g = mu2_g, mu1_g
-        sig1_g, sig2_g = sig2_g, sig1_g
-    
-    # Amplitude guesses: fraction of total mass on each side
-    frac_left = np.sum(y_pdf[left_mask]) * dx if np.any(left_mask) else 0.5
-    amp1_g = max(frac_left, 0.1) * amp_guess / (sig1_g * np.sqrt(2 * np.pi))
-    amp2_g = max(1 - frac_left, 0.1) * amp_guess / (sig2_g * np.sqrt(2 * np.pi))
-    
+    # from scipy.signal import find_peaks
+
+    peaks, _ = find_peaks(y, height=y.max() * 0.05)
+    if len(peaks) >= 2:
+        top2 = peaks[np.argsort(y[peaks])][::-1][:2]
+        top2 = np.sort(top2)
+        mu1_g, mu2_g = x[top2[0]], x[top2[1]]
+    else:
+        mu1_g, mu2_g = x.min() + 0.25 * (x.max() - x.min()), x.min() + 0.75 * (x.max() - x.min())
+
+    sig1_g = max(dx, (x.max() - x.min()) / 10)
+    sig2_g = sig1_g
+    amp1_g = max(amp_guess, 1e-6)
+    amp2_g = max(amp_guess * 0.5, 1e-6)
     p0_base = [amp1_g, mu1_g, sig1_g, amp2_g, mu2_g, sig2_g]
     
     # Bounds: amplitudes >= 0, stds > 0
@@ -121,20 +109,21 @@ def fit_bimodal_gaussian(x, y, n_restarts=10):
     best_resid = np.inf
     
     rng = np.random.default_rng(42)
+    lower = np.array(lower, dtype=float)
+    upper = np.array(upper, dtype=float)
+
     for i in range(n_restarts):
-        if i == 0:
-            p0 = p0_base
-        else:
-            # Random perturbations around the base guess
-            p0 = np.array(p0_base, dtype=float)
+        p0 = np.array(p0_base, dtype=float)
+        if i > 0:
             p0[1] += rng.normal(0, 0.1 * x_range)
             p0[4] += rng.normal(0, 0.1 * x_range)
             p0[2] *= np.exp(rng.normal(0, 0.3))
             p0[5] *= np.exp(rng.normal(0, 0.3))
             p0[0] *= np.exp(rng.normal(0, 0.3))
             p0[3] *= np.exp(rng.normal(0, 0.3))
-            # Clip into bounds
-            p0 = np.clip(p0, lower, upper)
+        
+        # Always clip, including i==0, with a small margin inside the bounds
+        p0 = np.clip(p0, lower + 1e-9, upper - 1e-9)
         
         try:
             popt, _ = curve_fit(
@@ -146,9 +135,8 @@ def fit_bimodal_gaussian(x, y, n_restarts=10):
             if resid < best_resid:
                 best_resid = resid
                 best_popt = popt
-        except RuntimeError:
+        except (RuntimeError, ValueError):
             continue
-    
     # If all fits failed, fall back to initial guess
     if best_popt is None:
         best_popt = np.array(p0_base)
@@ -338,14 +326,14 @@ def fit_truncated_normal(x, bound, direction, mu0=None, sigma0=None):
 
     return mu_hat, sigma_hat, x_fit, y_fit_pdf
 
-def chi2_test(observed, expected, floor_frac=0.01):
+def chi2_test(observed, expected, dof, floor_frac=0.01):
     observed = np.asarray(observed, dtype=float)
     expected = np.asarray(expected, dtype=float)
     floor = max(floor_frac * expected.max(), 1e-6)
     expected = np.clip(expected, floor, None)
-    return np.sum((observed - expected) ** 2 / expected)
+    return np.sum((observed - expected) ** 2 / expected) / dof
 
-def get_hist(samples, n_bins=None):
+def get_hist(samples, n_bins=None, mask=True):
     # Create histogram bins for observed data
     if n_bins is None:
         n_bins = int(np.sqrt(len(samples)))  # Sturges' rule alternative
@@ -355,23 +343,40 @@ def get_hist(samples, n_bins=None):
     
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
-    observed_freq = np.interp(bin_centers, bin_centers[~zeromask], observed_freq[~zeromask])
+    if mask == True:
+        observed_freq = np.interp(bin_centers, bin_centers[~zeromask], observed_freq[~zeromask])
+    
     return n_bins, bin_centers, bin_edges, observed_freq
+
+def poisson_deviance(observed, expected):
+    # avoid log(0)
+    eps = 1e-12
+    obs = np.asarray(observed, dtype=float)
+    exp = np.asarray(expected, dtype=float) + eps
+    term = np.where(obs > 0, obs * np.log(obs / exp), 0.0)
+    return 2.0 * np.sum(term - (obs - exp))
 
 def classify_posterior(samples, truncbound=None, 
                        n_bins=None,
-                       floor_frac=0.01, verbose=False):
+                       floor_frac=0.01, 
+                       promfrac=None,
+                       mask=True,
+                       verbose=False):
+
+    print("mask?", mask)
     
     samples = np.asarray(samples).ravel()
-    _, bin_centers, bin_edges, observed_freq = get_hist(samples, n_bins=n_bins)
+    _, bin_centers, bin_edges, observed_freq = get_hist(samples, 
+                                                        n_bins=n_bins, 
+                                                        mask=mask)
 
-    # plt.plot(bin_centers, observed_freq)
-    # plt.yscale('log')
-    # plt.show()
+    print("Observed Freq Array:")
+    print(observed_freq)
 
     # nonzero_freqs = observed_freq[observed_freq != 0]
     # print(f'there are {len(nonzero_freqs)} bins w freq >= 1')
-    if (len(np.unique(observed_freq)) < 3):
+    debug_print(verbose, f"len unique {len(np.unique(observed_freq))}")
+    if (len(np.unique(observed_freq)) < 2):
         return 'normal', np.mean(bin_centers), 0, None, bin_centers, observed_freq
     
     dx  = bin_edges[1] - bin_edges[0]
@@ -398,15 +403,33 @@ def classify_posterior(samples, truncbound=None,
     bimeans, bistds, biweights, x_fit, biexpected_freq = fit_bimodal_gaussian(bin_centers, observed_freq)
 
     biexpected_freq *= N * dx
-    bichi2_stat = chi2_test(observed_freq, biexpected_freq, floor_frac=floor_frac)
+    bichi2_stat = chi2_test(observed_freq, biexpected_freq, dof=6, floor_frac=floor_frac)
     # bichi2_stat = (0, bichi2_stat[1])
     sep = abs(bimeans[1] - bimeans[0])
     width = np.max(bistds)
-    if sep > width:   # tune this
+    if (sep > width) and (promfrac is None):   # tune this
 
         add_result('bimodal', bichi2_stat, 6, 
                 {'mean': bimeans, 'std':bistds, 'weights':biweights},
                 biexpected_freq)
+
+    if promfrac:
+    # Pad on both sides so peaks at the first/last bin are detected
+
+
+        padded = np.concatenate(([0], observed_freq, [0]))
+
+        peaks_padded, props = find_peaks(
+            padded, prominence=np.max(observed_freq) * promfrac
+        )
+
+        # Shift indices back to original (unpadded) array coordinates
+        peaks = peaks_padded #- 1
+
+        debug_print(verbose, f"{len(peaks)} peaks")
+
+        if len(peaks) > 1:
+            return 'bimodal', bimeans, bistds, biweights, bin_centers, biexpected_freq
 
 # else:
     mean, std = np.mean(samples), np.std(samples)
@@ -416,7 +439,7 @@ def classify_posterior(samples, truncbound=None,
 
     # 1. Normal distribution
     # normexpected_freq = norm.pdf(bin_centers, normmean, normstd) * N * dx        
-    normchi2_stat = chi2_test(observed_freq, normexpected_freq, floor_frac=floor_frac)
+    normchi2_stat = chi2_test(observed_freq, normexpected_freq, dof=2, floor_frac=floor_frac)
     add_result('normal', normchi2_stat, 2,
                {'mean': normmean, 'std': normstd}, normexpected_freq)
 
@@ -431,7 +454,7 @@ def classify_posterior(samples, truncbound=None,
         a = (truncbound[0] - mu_hat_0) / sigma_hat_0
         b = np.inf
         trunc0expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_0, sigma_hat_0) * N * dx
-        trunc0chi2_stat = chi2_test(observed_freq, trunc0expected_freq, floor_frac=floor_frac)
+        trunc0chi2_stat = chi2_test(observed_freq, trunc0expected_freq, dof=2, floor_frac=floor_frac)
 
         add_result('truncated_at_0', trunc0chi2_stat, 2, 
                    {'mean': mu_hat_0, 'std': sigma_hat_0}, trunc0expected_freq)
@@ -440,7 +463,7 @@ def classify_posterior(samples, truncbound=None,
         a = -np.inf
         b = (truncbound[1] - mu_hat_1) / sigma_hat_1
         trunc1expected_freq = truncnorm.pdf(bin_centers, a, b, mu_hat_1, sigma_hat_1) * N * dx
-        trunc1chi2_stat = chi2_test(observed_freq, trunc1expected_freq, floor_frac=floor_frac)
+        trunc1chi2_stat = chi2_test(observed_freq, trunc1expected_freq, dof=2, floor_frac=floor_frac)
 
         add_result('truncated_at_1', trunc1chi2_stat, 2, 
                    {'mean': mu_hat_1, 'std': sigma_hat_1}, trunc1expected_freq)
@@ -453,7 +476,7 @@ def classify_posterior(samples, truncbound=None,
     median_q = skewnorm.ppf(0.50, a_hat, loc=xi_hat, scale=omega_hat)
     upper  = skewnorm.ppf(0.84, a_hat, loc=xi_hat, scale=omega_hat)
 
-    skewchi2_stat = chi2_test(observed_freq, skewexpected_freq, floor_frac=floor_frac)
+    skewchi2_stat = chi2_test(observed_freq, skewexpected_freq, dof=3, floor_frac=floor_frac)
     add_result('skew_normal', skewchi2_stat, 3,
                {'mean': median_q,
                 'std': [median_q - lower, upper - median_q],
@@ -461,7 +484,13 @@ def classify_posterior(samples, truncbound=None,
                skewexpected_freq)
     
     # Sort by chi2 statistic (lower is better fit)
-    results.sort(key=lambda x: x['chi2'])
+    # results.sort(key=lambda x: x['chi2'])
+
+    for r in results:
+        #r['bic'] = r['chi2'] + r['k'] * np.log(n_bins)
+        r['bic'] = poisson_deviance(observed_freq, r['fit']['pdf']) + r['k'] * np.log(n_bins)
+
+    results.sort(key=lambda x: x['bic'])
 
     best_result = results[0]
 
@@ -476,8 +505,14 @@ def classify_posterior(samples, truncbound=None,
     x = best_result['fit'].get('x')
     pdf = best_result['fit'].get('pdf')
 
-    debug_print(verbose, [(d['distribution'], d['chi2']) for d in results])
+    debug_print(verbose, [(d['distribution'], d['bic']) for d in results])
 
+    is_scalar_mean = np.ndim(bestmean) == 0
+
+    if truncbound and is_scalar_mean and (bestmean > truncbound[1]):
+        bestmean = truncbound[1]
+    if truncbound and is_scalar_mean and (bestmean < truncbound[0]):
+        bestmean = truncbound[0]    
     return classification, bestmean, beststd, weights, x, pdf
 
 def cluster_peaks(peaks, sds="sector", 

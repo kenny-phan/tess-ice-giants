@@ -158,6 +158,8 @@ def plot_lightcurve_and_periodogram(planet,
         ax4.set_ylabel("Power")
 
         color="xkcd:sky blue"
+
+        legend_loc = "upper left"
     
     elif planet == "Neptune":
         ax1 = fig.add_subplot(gs[0, 0:3])
@@ -171,6 +173,8 @@ def plot_lightcurve_and_periodogram(planet,
         ax3.set_ylabel("Power")
 
         color="xkcd:royal blue"
+
+        legend_loc = "upper right"
 
     for i, lc in enumerate(lc_list):
         scatter_data(axs[i], planet, 
@@ -188,7 +192,8 @@ def plot_lightcurve_and_periodogram(planet,
                             periodogram['power'], 
                             periodogram['false_alarm_levels'], 
                             color=color, probabilities=[10, 1, 0.01], 
-                            xlim=xlim, log=log, period_limit=periodogram_limit)
+                            xlim=xlim, log=log, period_limit=periodogram_limit,
+                            legend_loc=legend_loc)
         axs[i + len(lc_list)].set_xlim(xlim[0], xlim[1])
 
     plt.tight_layout()
@@ -290,6 +295,8 @@ def sort_ur_to_eqns(lat_arr, std_arr):
     return new_lat_arr, new_std_arr
 
 def plot_lat_solutions(axs, latitudes, std, wind_eqn, sector, color, label=False, even=True, marker='o', markersize=5):
+    print("latitudes", latitudes, "stds", std)
+    
     for i, latitude in enumerate(latitudes):
         if label:
             label = f"Sector {sector}" if i == 0 else None
@@ -478,7 +485,7 @@ def plot_mosaic_latitudes(mosaic_data, eqns, lats, stds, plot_colors,
     if planet == "Neptune":
         cax2 = ax.inset_axes([0.70, 0.35, 0.25, 0.0225])
     elif planet == "Uranus":
-        cax2 = ax.inset_axes([0.70, 0.40, 0.25, 0.0225])
+        cax2 = ax.inset_axes([0.675, 0.40, 0.25, 0.0225])
 
     bounds = np.arange(n_subs + 1)
     norm = mpl.colors.BoundaryNorm(bounds, discrete_cmap.N)
@@ -740,8 +747,8 @@ def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, mi
 
     # Add "Data gap" label
     if gap_idx is not None:
-        axs.text(x_ticks[gap_idx] + 10, 50, "data gap", ha="center", va="center",
-                 rotation=90, fontsize=18, color="black",
+        axs.text(x_ticks[gap_idx] + 9, 50, "data gap", ha="center", va="center",
+                 rotation=90, fontsize=16, color="black",
                  bbox=dict(facecolor="white", edgecolor="none", alpha=0.8))
 
     return np.array(peak_freqs), np.array(periods), np.array(stretch_power), np.array(gap_time_ranges), stretched_rows
@@ -751,7 +758,7 @@ def plot_subsector_heatmap(planet,
                            subtimes, subfluxes, 
                            subfreqs, subpower, subfap, 
                            labels, max_freq, offset, 
-                           min_per, max_per, xlim=None):
+                           min_per, max_per, savedir, xlim=None):
 
     if xlim is None:
         xlim = [min_per, max_per]
@@ -850,7 +857,7 @@ def plot_subsector_heatmap(planet,
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     cb1 = mpl.colorbar.ColorbarBase(cbar_ax, cmap="coolwarm", norm=norm)
 
-    plt.show()
+    plt.savefig(savedir + planet + "_subsectors.png")
 
 def sort_lat_std(latitudes, standard_deviations):
     sorted_latitudes = np.empty_like(latitudes, dtype=object)
