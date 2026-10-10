@@ -43,7 +43,7 @@ total_segs = 10
 times = [sector['time'] for sector in lc_list]
 fluxes = [sector['orbit_corrected'] for sector in lc_list]
 result = split_data(times, fluxes, 
-                    max_freq_arr, freq_array_size=1000,
+                    max_freq_arr, freq_array_size=10000,
                     m=50, total_segs=total_segs, 
                     bootstrap=True,
                     verbose=True)
@@ -115,9 +115,9 @@ for sec in range(nsec):
         peaks = bootstrap_results[sec, sub]
         labels, all_means, all_stds = cluster_peaks(peaks, 
                                                     sds=planet_sectors[sec] + f"_ss{sub}",
-                                                    eps=0.005, 
+                                                    eps=0.1, 
                                                     n_bootstraps=10000,
-                                                    pass_frac=0.8, 
+                                                    pass_frac=0.8, n_bins=50,
                                                     figdir=supfigdir + "clusters/")
         
         cluster_results[sec, sub] = (labels, all_means, all_stds)

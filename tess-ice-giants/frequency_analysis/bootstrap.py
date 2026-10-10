@@ -363,15 +363,15 @@ def classify_posterior(samples, truncbound=None,
                        mask=True,
                        verbose=False):
 
-    print("mask?", mask)
+    # print("mask?", mask)
     
     samples = np.asarray(samples).ravel()
     _, bin_centers, bin_edges, observed_freq = get_hist(samples, 
                                                         n_bins=n_bins, 
                                                         mask=mask)
 
-    print("Observed Freq Array:")
-    print(observed_freq)
+    # print("Observed Freq Array:")
+    # print(observed_freq)
 
     # nonzero_freqs = observed_freq[observed_freq != 0]
     # print(f'there are {len(nonzero_freqs)} bins w freq >= 1')
@@ -592,23 +592,30 @@ def cluster_peaks(peaks, sds="sector",
         if classification == "bimodal":
 
             count1 = weights[0] * count
-            count2 = weights[0] * count
+            count2 = weights[1] * count          # <-- was weights[0]; that was a bug
 
-            if (count1 < n_bootstraps * pass_frac) and (count2 < n_bootstraps * pass_frac): 
+            if (count1 < n_bootstraps * pass_frac) and (count2 < n_bootstraps * pass_frac):
                 continue
             elif (count1 >= n_bootstraps * pass_frac) and (count2 < n_bootstraps * pass_frac):
-                mean = mean[0]
-                std = std[0]
+                # only mode 0 survives
+                all_means.append(mean[0])
+                all_stds.append(std[0])
+                continue
             elif (count1 < n_bootstraps * pass_frac) and (count2 >= n_bootstraps * pass_frac):
-                mean = mean[1]
-                std = std[1]
+                # only mode 1 survives
+                all_means.append(mean[1])
+                all_stds.append(std[1])
+                continue
             else:
-                mean = mean
-                std = std
+                # both modes survive -> append each as its own entry
+                all_means.extend([mean[0], mean[1]])
+                all_stds.extend([std[0], std[1]])
+                continue
 
+        # unimodal (or anything else) -> single scalar entry
         all_means.append(mean)
         all_stds.append(std)
-
+        
     if figdir:
         # Hide any unused subplots
         for j in range(plot_idx, len(axes)):

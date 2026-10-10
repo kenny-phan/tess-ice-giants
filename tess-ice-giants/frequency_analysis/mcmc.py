@@ -361,7 +361,8 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
 
         phi_arr = []
 
-        print(cluster_arr['matched_stds'])
+        print('matched means', cluster_arr['matched_means'])
+        print('matched stds', cluster_arr['matched_stds'])
 
         means = np.array(cluster_arr['matched_means'])
         means_filtered = 1 / means[means < period_limit]
@@ -370,7 +371,9 @@ def save_mcmc(wind_eqns, wind_eqn_errs, cluster_arr,
         if is_homogeneous(clust_stds):
             stds = np.array(cluster_arr['matched_stds'])
             stds_filtered_periods = stds[means < period_limit]
-            stds_filtered = stds_filtered_periods * (means_filtered**2)
+            stds_filtered = stds_filtered_periods * (means_filtered[:, None] ** 2)
+
+            # stds_filtered = stds_filtered_periods * (means_filtered**2)
 
         else:
             print('not homogeneous')
