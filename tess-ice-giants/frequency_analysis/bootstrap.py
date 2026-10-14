@@ -356,6 +356,15 @@ def poisson_deviance(observed, expected):
     term = np.where(obs > 0, obs * np.log(obs / exp), 0.0)
     return 2.0 * np.sum(term - (obs - exp))
 
+from scipy.optimize import minimize_scalar
+
+def get_skewnorm_mode(a, xi, omega):
+    # We want to maximize the PDF, so we minimize the negative PDF
+    res = minimize_scalar(lambda x: -skewnorm.pdf(x, a, loc=xi, scale=omega), 
+                          bounds=(xi - 5*omega, xi + 5*omega), 
+                          method='bounded')
+    return res.x
+
 def classify_posterior(samples, truncbound=None, 
                        n_bins=None,
                        floor_frac=0.01, 
@@ -473,7 +482,9 @@ def classify_posterior(samples, truncbound=None,
     a_hat, xi_hat, omega_hat, amp_hat, _, skewexpected_freq = fit_skew_normal(bin_centers, observed_freq)
 
     lower  = skewnorm.ppf(0.16, a_hat, loc=xi_hat, scale=omega_hat)
-    median_q = skewnorm.ppf(0.50, a_hat, loc=xi_hat, scale=omega_hat)
+    mode_q = get_skewnorm_mode(a_hat, xi_hat, omega_hat)
+
+    median_q = mode_q #skewnorm.ppf(0.50, a_hat, loc=xi_hat, scale=omega_hat)
     upper  = skewnorm.ppf(0.84, a_hat, loc=xi_hat, scale=omega_hat)
 
     skewchi2_stat = chi2_test(observed_freq, skewexpected_freq, dof=3, floor_frac=floor_frac)

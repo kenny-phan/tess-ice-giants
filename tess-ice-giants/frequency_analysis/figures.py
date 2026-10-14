@@ -380,6 +380,8 @@ def plot_subsec_latsols(ax, subseclat, subsecstd, eqn,
 
         if flip:
             lat = -lat
+            if std.size == 2:
+                std = std[::-1]  
         ax.errorbar(eqn(np.radians(lat)), 
                             lat, 
                             yerr=std, 
@@ -756,6 +758,7 @@ def plot_split_periodograms(axs,
     axs.figure.canvas.draw()
     axs.set_xlim(xlim[0], xlim[1])
     axs.set_xlabel("Period [hours]")
+
 def plot_heatmap(axs, time_stack, frequency, max_frequency, power, fap_stack, min_per, max_per,
                  btjd_offset=2400, round_decimals=1,
                  gap_factor=3, vmin=0, vmax=1, output_table=False,
@@ -883,7 +886,10 @@ def plot_subsector_heatmap(planet,
         xlim = [min_per, max_per]
 
     fig = plt.figure(figsize=(20, 18))
-    gs = fig.add_gridspec(nrows=3, ncols=7, height_ratios=[1, 1, 1], width_ratios=[1, 1, 1, 1, 1, 1, 0.1], wspace=0.3)
+    gs = fig.add_gridspec(nrows=3, ncols=7, height_ratios=[1, 1, 1],
+                        width_ratios=[1, 1, 1, 1, 1, 1, 0.05],  # <- narrow 7th column
+                        wspace=0.3)
+    # gs_cbar = gs[2, 6].subgridspec(1, 2, width_ratios=[0.0, 1], wspace=0.0)
 
     if planet == "Neptune":
 
@@ -907,12 +913,12 @@ def plot_subsector_heatmap(planet,
         hm_axs = [ax5, ax6]
 
         # colorbar
-        ax7=fig.add_subplot(gs[2,6])
-        ax7.set_ylabel("Power")
-        #remove xaxis ticks
-        ax7.set_xticks([])
+        # ax7=fig.add_subplot(gs_cbar[0,1])
+        # ax7.set_ylabel("Power")
+        # #remove xaxis ticks
+        # ax7.set_xticks([])
 
-        cbar_ax = ax7
+        # cbar_ax = ax7
     
     elif planet == "Uranus":
         # light curves
@@ -940,12 +946,12 @@ def plot_subsector_heatmap(planet,
         hm_axs = [ax7, ax8, ax9]
         
         # colorbar
-        ax10=fig.add_subplot(gs[2,6])
-        ax10.set_ylabel("Power")
-        #remove xaxis ticks
-        ax10.set_xticks([])
+        # ax10=fig.add_subplot(gs_cbar[0,1])
+        # ax10.set_ylabel("Power")
+        # #remove xaxis ticks
+        # ax10.set_xticks([])
 
-        cbar_ax = ax10
+        # cbar_ax = ax10
 
     for j, ax in enumerate(lc_axs):
         plot_split_lightcurves(ax, subtimes[j], subfluxes[j], labels[j])
@@ -973,10 +979,21 @@ def plot_subsector_heatmap(planet,
                      min_per, max_per, btjd_offset=offset[j], 
                      vmin=vmin, vmax=vmax, xlim=xlim)
 
+    pos = hm_axs[-1].get_position()   # bbox of the rightmost heatmap
+    gap = 0.005                        # gap in FIGURE coords (0 = touching)
+    cbar_width = 0.012                 # width of the colorbar
+
+    cbar_ax = fig.add_axes([pos.x1 + gap, pos.y0, cbar_width, pos.height])
+
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     cb1 = mpl.colorbar.ColorbarBase(cbar_ax, cmap="coolwarm", norm=norm)
+    cb1.set_label("Power", fontsize=16)
 
-    plt.savefig(savedir + planet + "_subsectors.png")
+    # norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    # cb1 = mpl.colorbar.ColorbarBase(cbar_ax, cmap="coolwarm", norm=norm)
+    # cb1.set_label("Power", fontsize=16)  # <-- Add this line
+
+    plt.savefig(savedir + planet + "_subsectors.png",  bbox_inches="tight")
 
 def sort_lat_std(latitudes, standard_deviations):
     sorted_latitudes = np.empty_like(latitudes, dtype=object)
